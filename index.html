@@ -1353,17 +1353,7 @@ async function renderAdminProjectCommsPage() {
     <div class="breadcrumb">
       <a onclick="showPage('admin-projects')">פרויקטים</a> › <span>${esc(project.name)}</span>
     </div>
-    <details class="card" style="margin-bottom:20px;">
-      <summary style="cursor:pointer;font-weight:700;color:var(--primary-dark);font-size:15px;padding:4px 0;">💰 מחירי הנצחות בפרויקט זה</summary>
-      <p style="font-size:13px;color:var(--text-muted);margin:12px 0 8px;">שנה מחיר לפרויקט זה בלבד. ריק = שימוש במחיר ברירת המחדל של הסוג.</p>
-      <div class="table-wrap" style="margin-top:8px;">
-        <table class="data-table">
-          <thead><tr><th>סוג הנצחה</th><th>מחיר גלובלי</th><th>מחיר לפרויקט זה (₪)</th></tr></thead>
-          <tbody>${priceRows}</tbody>
-        </table>
-      </div>
-    </details>
-    <div class="section-header">
+<div class="section-header">
       <h2>הנצחות בפרויקט (${Object.keys(comms).length})</h2>
       <button class="btn btn-primary btn-sm" onclick="openCommModal('${currentProjectId}')">➕ הנצחה חדשה</button>
     </div>
