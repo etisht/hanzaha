@@ -503,6 +503,10 @@
       <label>שם הפרויקט *</label>
       <input class="form-control" id="project-name" placeholder="שם הפרויקט">
     </div>
+    <div class="form-group">
+      <label>הערות על הפרויקט</label>
+      <textarea class="form-control" id="project-notes" rows="3" placeholder="הערות כלליות לפרויקט (רשות)" style="resize:vertical;"></textarea>
+    </div>
     <div class="modal-actions">
       <button class="btn btn-ghost" onclick="closeModal('modal-project')">ביטול</button>
       <button class="btn btn-primary" onclick="saveProject()">שמור</button>
@@ -514,9 +518,13 @@
 <div class="modal-backdrop" id="modal-comm">
   <div class="modal">
     <div class="modal-title" id="comm-modal-title">➕ הנצחה חדשה</div>
-    <div class="form-group">
+    <div class="form-group" id="comm-type-group">
       <label>סוג הנצחה *</label>
       <select class="form-control" id="comm-type" onchange="fillCommPrice()"></select>
+    </div>
+    <div class="form-group" id="comm-type-display" style="display:none;">
+      <label>סוג הנצחה</label>
+      <input class="form-control" id="comm-type-name" disabled style="background:#F5F5F5;">
     </div>
     <div class="form-group">
       <label>מחיר (₪) *</label>
@@ -607,6 +615,7 @@ let pendingSellId = null;
 let editingProjectId = null;
 let editingUserId = null;
 let editingCommProjectId = null;
+let editingCommId = null;
 let commListener = null;
 
 // Demo data for unconfigured mode
@@ -1225,7 +1234,7 @@ async function renderAdminProjectsPage() {
 
   const rows = Object.entries(allProjects).sort((a,b) => (b[1].createdAt||0)-(a[1].createdAt||0)).map(([id,p]) => `
     <tr>
-      <td><strong>${esc(p.name)}</strong></td>
+      <td><strong>${esc(p.name)}</strong>${p.notes ? `<div style="font-size:12px;color:var(--text-muted);margin-top:4px;">${esc(p.notes)}</div>` : ''}</td>
       <td><span class="tag ${p.isActive?'tag-success':'tag-warning'}">${p.isActive?'פעיל':'סגור'}</span></td>
       <td>
         <div class="btn-row">
@@ -1250,20 +1259,25 @@ function openProjectModal(id) {
   editingProjectId = id || null;
   document.getElementById('project-modal-title').textContent = id ? '✏️ עריכת פרויקט' : '➕ פרויקט חדש';
   document.getElementById('project-name').value = id ? allProjects[id].name : '';
+  document.getElementById('project-notes').value = id ? (allProjects[id].notes || '') : '';
   openModal('modal-project');
 }
 
 async function saveProject() {
   const name = document.getElementById('project-name').value.trim();
+  const notes = document.getElementById('project-notes').value.trim();
   if (!name) { showToast('נא להזין שם פרויקט', 'error'); return; }
 
   if (!IS_CONFIGURED) {
-    if (editingProjectId) { allProjects[editingProjectId].name = name; }
-    else { allProjects['p'+Date.now()] = { name, isActive: true, createdAt: Date.now() }; }
+    if (editingProjectId) { allProjects[editingProjectId].name = name; allProjects[editingProjectId].notes = notes || null; }
+    else { allProjects['p'+Date.now()] = { name, notes: notes || null, isActive: true, createdAt: Date.now() }; }
     closeModal('modal-project'); renderAdminProjectsPage(); return;
   }
-  if (editingProjectId) await db.ref(`projects/${editingProjectId}/name`).set(name);
-  else await db.ref('projects').push({ name, isActive: true, createdAt: Date.now() });
+  if (editingProjectId) {
+    await db.ref(`projects/${editingProjectId}`).update({ name, notes: notes || null });
+  } else {
+    await db.ref('projects').push({ name, notes: notes || null, isActive: true, createdAt: Date.now() });
+  }
   closeModal('modal-project');
   await loadProjects(); renderAdminProjectsPage();
   showToast('הפרויקט נשמר', 'success');
@@ -1312,12 +1326,15 @@ async function renderAdminProjectCommsPage() {
   const statusTagClass = { available: 'tag-success', captured: 'tag-warning', sold: 'tag-gray' };
   const rows = Object.entries(comms).map(([id,c]) => `
     <tr>
-      <td><strong>${esc(c.name)}</strong></td>
+      <td><strong>${esc(c.name)}</strong>${c.notes ? `<div style="font-size:12px;color:var(--text-muted);margin-top:2px;">${esc(c.notes)}</div>` : ''}</td>
       <td>${esc(allTypes[c.typeId]?.name||'')}</td>
       <td>₪${(c.price||0).toLocaleString()}</td>
       <td><span class="tag ${statusTagClass[c.status]||''}">${statusLabels[c.status]||''}</span></td>
       <td>
-        <button class="btn btn-danger btn-sm" onclick="deleteComm('${id}')">🗑</button>
+        <div class="btn-row">
+          <button class="btn btn-ghost btn-sm" onclick="editComm('${id}')">✏️</button>
+          <button class="btn btn-danger btn-sm" onclick="deleteComm('${id}')">🗑</button>
+        </div>
       </td>
     </tr>`).join('');
 
@@ -1352,13 +1369,28 @@ async function renderAdminProjectCommsPage() {
     </div>
     <div class="table-wrap">
       <table class="data-table">
-        <thead><tr><th>שם</th><th>סוג</th><th>מחיר</th><th>סטאטוס</th><th>מחיקה</th></tr></thead>
+        <thead><tr><th>שם</th><th>סוג</th><th>מחיר</th><th>סטאטוס</th><th>פעולות</th></tr></thead>
         <tbody>${rows || '<tr><td colspan="5" style="text-align:center;padding:40px;color:var(--text-muted)">אין הנצחות — הוסף הנצחה חדשה</td></tr>'}</tbody>
       </table>
     </div>`;
 }
 
+function editComm(commId) {
+  const c = allComms[commId];
+  if (!c) return;
+  editingCommId = commId;
+  editingCommProjectId = c.projectId;
+  document.getElementById('comm-modal-title').textContent = '✏️ עריכת הנצחה';
+  document.getElementById('comm-type-group').style.display = 'none';
+  document.getElementById('comm-type-display').style.display = '';
+  document.getElementById('comm-type-name').value = allTypes[c.typeId]?.name || c.name;
+  document.getElementById('comm-price').value = c.price || 0;
+  document.getElementById('comm-notes').value = c.notes || '';
+  openModal('modal-comm');
+}
+
 async function openCommModal(projectId) {
+  editingCommId = null;
   editingCommProjectId = projectId;
 
   let usedTypeIds = new Set();
@@ -1374,6 +1406,8 @@ async function openCommModal(projectId) {
 
   document.getElementById('comm-modal-title').textContent = '➕ הנצחה חדשה';
   document.getElementById('comm-notes').value = '';
+  document.getElementById('comm-type-group').style.display = '';
+  document.getElementById('comm-type-display').style.display = 'none';
   document.getElementById('comm-type').innerHTML = availableTypes.map(([id,t]) => `<option value="${id}">${esc(t.name)}</option>`).join('');
   fillCommPrice();
   openModal('modal-comm');
@@ -1389,9 +1423,22 @@ function fillCommPrice() {
 }
 
 async function saveComm() {
-  const typeId = document.getElementById('comm-type').value;
   const price = parseFloat(document.getElementById('comm-price').value) || 0;
   const notes = document.getElementById('comm-notes').value.trim();
+
+  if (editingCommId) {
+    const updates = { price, notes: notes || null };
+    if (!IS_CONFIGURED) {
+      Object.assign(allComms[editingCommId], updates);
+      closeModal('modal-comm'); renderAdminProjectCommsPage(); return;
+    }
+    await db.ref(`commemorations/${editingCommId}`).update(updates);
+    closeModal('modal-comm'); renderAdminProjectCommsPage();
+    showToast('ההנצחה עודכנה', 'success');
+    return;
+  }
+
+  const typeId = document.getElementById('comm-type').value;
   if (!typeId) { showToast('נא לבחור סוג הנצחה', 'error'); return; }
   const alreadyExists = Object.values(allComms).some(c => c.projectId === editingCommProjectId && c.typeId === typeId);
   if (alreadyExists) { showToast('סוג הנצחה זה כבר קיים בפרויקט', 'error'); return; }
