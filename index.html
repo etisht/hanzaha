@@ -474,6 +474,10 @@
       <input class="form-control" id="sell-donation-number" placeholder="מספר קבלה">
     </div>
     <div class="form-group">
+      <label>שם / שמות להנצחה</label>
+      <input class="form-control" id="sell-commemoration-names" placeholder="שם / שמות להנצחה">
+    </div>
+    <div class="form-group">
       <label>מקור התרומה *</label>
       <select class="form-control" id="sell-source"></select>
     </div>
@@ -1126,7 +1130,7 @@ function openSell(commId) {
   document.getElementById('sell-comm-info').innerHTML = `
     <strong>${esc(c.name)}</strong> &nbsp;·&nbsp; ${esc(allTypes[c.typeId]?.name||'')} &nbsp;·&nbsp;
     <span style="color:var(--accent);font-weight:700;">₪${(c.price||0).toLocaleString()}</span>`;
-  ['sell-donor-name','sell-donor-phone','sell-donation-number'].forEach(id => document.getElementById(id).value = '');
+  ['sell-donor-name','sell-donor-phone','sell-donation-number','sell-commemoration-names'].forEach(id => document.getElementById(id).value = '');
   document.getElementById('sell-error').style.display = 'none';
   const sel = document.getElementById('sell-source');
   sel.innerHTML = appSettings.donationSources.map(s => `<option value="${esc(s)}">${esc(s)}</option>`).join('');
@@ -1137,6 +1141,7 @@ async function confirmSell() {
   const donorName = document.getElementById('sell-donor-name').value.trim();
   const donorPhone = document.getElementById('sell-donor-phone').value.trim();
   const donationNumber = document.getElementById('sell-donation-number').value.trim();
+  const commemorationNames = document.getElementById('sell-commemoration-names').value.trim();
   const source = document.getElementById('sell-source').value;
   const errEl = document.getElementById('sell-error');
   errEl.style.display = 'none';
@@ -1146,7 +1151,7 @@ async function confirmSell() {
   const commId = pendingSellId;
 
   if (!IS_CONFIGURED) {
-    allComms[commId] = { ...allComms[commId], status: 'sold', donorName, donorPhone, donationNumber, donationSource: source, soldBy: currentUser.uid, soldByName: currentUser.displayName, soldAt: Date.now(), capturedBy: null, capturedByName: null, capturedAt: null, captureExpiry: null };
+    allComms[commId] = { ...allComms[commId], status: 'sold', donorName, donorPhone, donationNumber, commemorationNames, donationSource: source, soldBy: currentUser.uid, soldByName: currentUser.displayName, soldAt: Date.now(), capturedBy: null, capturedByName: null, capturedAt: null, captureExpiry: null };
     closeModal('modal-sell');
     renderCommsGrid(); renderCommsStats();
     showToast('ההנצחה נמכרה בהצלחה! 🎉', 'success');
@@ -1161,7 +1166,7 @@ async function confirmSell() {
       errEl.style.display = 'block'; return;
     }
     await db.ref(`commemorations/${commId}`).update({
-      status: 'sold', donorName, donorPhone, donationNumber, donationSource: source,
+      status: 'sold', donorName, donorPhone, donationNumber, commemorationNames, donationSource: source,
       soldBy: currentUser.uid, soldByName: currentUser.displayName, soldAt: Date.now(),
       capturedBy: null, capturedByName: null, capturedAt: null, captureExpiry: null
     });
