@@ -1317,7 +1317,7 @@ async function renderAdminProjectCommsPage() {
   let comms = {};
   if (IS_CONFIGURED) {
     const snap = await db.ref('commemorations').orderByChild('projectId').equalTo(currentProjectId).once('value');
-    if (snap.exists()) snap.forEach(c => { comms[c.key] = c.val(); });
+    if (snap.exists()) snap.forEach(c => { comms[c.key] = c.val(); allComms[c.key] = c.val(); });
   } else {
     Object.entries(allComms).filter(([,c]) => c.projectId === currentProjectId).forEach(([id,c]) => { comms[id] = c; });
   }
