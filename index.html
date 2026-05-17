@@ -1232,6 +1232,7 @@ async function renderAdminProjectsPage() {
           <button class="btn btn-ghost btn-sm" onclick="showPage('admin-project-comms','${id}')">✏️ הנצחות</button>
           <button class="btn btn-ghost btn-sm" onclick="openProjectModal('${id}')">📝 עריכה</button>
           <button class="btn btn-ghost btn-sm" onclick="toggleProject('${id}')">${p.isActive?'🔒 סגור':'🔓 פתח'}</button>
+          <button class="btn btn-danger btn-sm" onclick="deleteProject('${id}','${esc(p.name)}')">🗑️ מחק</button>
         </div>
       </td>
     </tr>`).join('');
@@ -1266,6 +1267,20 @@ async function saveProject() {
   closeModal('modal-project');
   await loadProjects(); renderAdminProjectsPage();
   showToast('הפרויקט נשמר', 'success');
+}
+
+async function deleteProject(id, name) {
+  if (!confirm(`למחוק את הפרויקט "${name}"?\nפעולה זו אינה ניתנת לביטול.`)) return;
+  if (!IS_CONFIGURED) {
+    delete allProjects[id];
+    renderAdminProjectsPage();
+    showToast('הפרויקט נמחק', 'success');
+    return;
+  }
+  await db.ref(`projects/${id}`).remove();
+  delete allProjects[id];
+  renderAdminProjectsPage();
+  showToast('הפרויקט נמחק', 'success');
 }
 
 async function toggleProject(id) {
