@@ -339,6 +339,82 @@
       .login-box { padding: 36px 24px; }
       .stats-row { gap: 10px; }
     }
+
+    /* ===== CHECKLIST ===== */
+    .checklist-row {
+      display: flex; align-items: center; gap: 10px;
+      padding: 10px 14px; border-radius: 8px; margin-bottom: 6px;
+      background: var(--bg); border: 1px solid var(--border);
+    }
+    .checklist-row input[type="checkbox"] { width: 18px; height: 18px; cursor: pointer; accent-color: var(--primary); }
+    .checklist-row label { font-size: 14px; font-weight: 500; cursor: pointer; flex: 1; }
+    .checklist-row.checked { background: #F0FBF0; border-color: var(--success); }
+    .checklist-row.locked label { color: var(--text-muted); }
+
+    /* ===== IMAGE UPLOAD ===== */
+    .image-upload-area {
+      border: 2px dashed var(--border); border-radius: 10px;
+      padding: 20px; text-align: center; cursor: pointer;
+      transition: border-color 0.2s; position: relative;
+    }
+    .image-upload-area:hover { border-color: var(--primary); }
+    .image-upload-area input[type="file"] { position: absolute; inset: 0; opacity: 0; cursor: pointer; width: 100%; height: 100%; }
+    .image-preview { max-width: 100%; max-height: 220px; border-radius: 8px; margin-top: 10px; display: block; }
+
+    /* ===== EXPORT PAGE ===== */
+    .export-project-item {
+      display: flex; align-items: center; gap: 12px;
+      padding: 12px 16px; border: 2px solid var(--border); border-radius: 10px;
+      margin-bottom: 8px; cursor: pointer; transition: border-color 0.2s;
+    }
+    .export-project-item:hover { border-color: var(--primary-light); background: rgba(107,76,139,0.03); }
+    .export-project-item.selected { border-color: var(--primary); background: rgba(107,76,139,0.07); }
+    .export-project-item input[type="checkbox"] { width: 18px; height: 18px; accent-color: var(--primary); }
+
+    /* ===== HISTORY TABLE ===== */
+    .history-table td { font-size: 13px; }
+    .release-badge { display: inline-block; padding: 2px 8px; border-radius: 12px; font-size: 11px; font-weight: 600; }
+    .release-manual { background: #E3F2FD; color: #1565C0; }
+    .release-expired { background: #FFF3E0; color: #E65100; }
+    .release-sold { background: #E8F5E9; color: #2E7D32; }
+    .release-pending { background: #FFF8E1; color: #F57F17; }
+
+    /* ===== REQUIRED STAR ===== */
+    .req { color: var(--danger); margin-right: 2px; }
+
+    /* ===== PRIORITY BADGE ===== */
+    .priority-badge {
+      display: inline-flex; align-items: center; justify-content: center;
+      width: 26px; height: 26px; border-radius: 50%;
+      font-size: 12px; font-weight: 800; flex-shrink: 0;
+    }
+    .priority-1 { background: #E53935; color: white; }
+    .priority-2 { background: #FB8C00; color: white; }
+    .priority-3 { background: #FDD835; color: #333; }
+    .priority-4 { background: #66BB6A; color: white; }
+    .priority-5 { background: #78909C; color: white; }
+
+    /* ===== SEARCH PAGE ===== */
+    .search-result-card {
+      background: var(--bg-card); border-radius: var(--radius);
+      box-shadow: var(--shadow); padding: 18px 22px;
+      border: 2px solid var(--border); margin-bottom: 12px;
+      transition: all 0.18s;
+    }
+    .search-result-card:hover { box-shadow: var(--shadow-lg); border-color: var(--primary-light); }
+    .search-result-project { font-size: 13px; font-weight: 700; color: var(--primary); margin-bottom: 8px; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+    .search-result-name { font-size: 16px; font-weight: 700; color: var(--primary-dark); margin-bottom: 6px; }
+    .search-result-meta { font-size: 13px; color: var(--text-muted); display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+
+    /* ===== MIKVEH PANEL ===== */
+    .mikveh-panel {
+      background: linear-gradient(135deg, #F3EFF8, #EDE7F6);
+      border: 2px solid var(--primary-light); border-radius: var(--radius);
+      padding: 16px 20px; margin: 10px 0 4px;
+      animation: fadeSlideIn 0.2s ease;
+    }
+    .mikveh-panel-title { font-size: 14px; font-weight: 800; color: var(--primary-dark); margin-bottom: 10px; display: flex; align-items: center; gap: 6px; }
+    @keyframes fadeSlideIn { from { opacity: 0; transform: translateY(-6px); } to { opacity: 1; transform: translateY(0); } }
   </style>
 </head>
 <body>
@@ -385,6 +461,9 @@
         <div class="nav-item active" onclick="showPage('projects')" data-page="projects">
           <span class="nav-icon">📋</span> פרויקטים
         </div>
+        <div class="nav-item" onclick="showPage('search')" data-page="search">
+          <span class="nav-icon">🔍</span> חיפוש הנצחות
+        </div>
       </div>
       <div id="nav-admin-section" style="display:none">
         <div class="nav-section-title">אדמין</div>
@@ -400,9 +479,25 @@
         <div class="nav-item" onclick="showPage('admin-settings')" data-page="admin-settings">
           <span class="nav-icon">⚙️</span> הגדרות
         </div>
-        <div class="nav-section-title" style="margin-top:6px;">צפייה</div>
+        <div class="nav-section-title" style="margin-top:6px;">צפייה וייצוא</div>
         <div class="nav-item" onclick="showPage('projects')" data-page="projects-admin">
           <span class="nav-icon">📋</span> כל הפרויקטים
+        </div>
+        <div class="nav-item" onclick="showPage('search')" data-page="search-admin">
+          <span class="nav-icon">🔍</span> חיפוש הנצחות
+        </div>
+        <div class="nav-item" onclick="showPage('all-comms')" data-page="all-comms">
+          <span class="nav-icon">📊</span> כל ההנצחות
+        </div>
+        <div class="nav-item" onclick="showPage('capture-history')" data-page="capture-history">
+          <span class="nav-icon">📜</span> היסטוריית תפיסות
+        </div>
+        <div class="nav-item" onclick="showPage('admin-expired')" data-page="admin-expired" id="nav-expired">
+          <span class="nav-icon">⚠️</span> לטיפול
+          <span id="nav-expired-badge" style="display:none;background:var(--danger);color:white;border-radius:10px;font-size:11px;font-weight:700;padding:1px 7px;margin-right:auto;"></span>
+        </div>
+        <div class="nav-item" onclick="showPage('export-excel')" data-page="export-excel">
+          <span class="nav-icon">📥</span> ייצוא לאקסל
         </div>
       </div>
       <div style="margin-top:auto;padding-top:12px;">
@@ -442,12 +537,26 @@
 <div class="modal-backdrop" id="modal-capture">
   <div class="modal">
     <div class="modal-title">✋ תפיסת הנצחה</div>
-    <p style="color:var(--text-muted);font-size:14px;margin-bottom:8px;">
-      האם לתפוס את ההנצחה <strong id="capture-comm-name" style="color:var(--primary-dark)"></strong>?
+    <p style="color:var(--text-muted);font-size:14px;margin-bottom:16px;">
+      תפיסת ההנצחה <strong id="capture-comm-name" style="color:var(--primary-dark)"></strong>
     </p>
-    <p style="font-size:13px;color:var(--text-muted);">
-      ההנצחה תישמר עבורך <strong id="capture-expiry-days"></strong> ימים ואחר כך תחזור לזמינה אוטומטית.
-    </p>
+    <div class="form-group">
+      <label>שם התורם</label>
+      <input class="form-control" id="capture-donor-name" placeholder="שם התורם הפוטנציאלי">
+    </div>
+    <div class="form-group">
+      <label>שם מתרים</label>
+      <input class="form-control" id="capture-fundraiser-name" placeholder="שם המתרים">
+    </div>
+    <div class="form-group">
+      <label>הערה</label>
+      <textarea class="form-control" id="capture-note" rows="2" placeholder="הערה (רשות)" style="resize:vertical;"></textarea>
+    </div>
+    <div class="form-group">
+      <label>שמור עד תאריך</label>
+      <input class="form-control" type="date" id="capture-until-date">
+      <div style="font-size:12px;color:var(--text-muted);margin-top:4px;">ברירת מחדל: <span id="capture-expiry-days"></span> ימים</div>
+    </div>
     <div class="modal-actions">
       <button class="btn btn-ghost" onclick="closeModal('modal-capture')">ביטול</button>
       <button class="btn btn-primary" onclick="confirmCapture()">✋ תפוס</button>
@@ -457,29 +566,60 @@
 
 <!-- SELL -->
 <div class="modal-backdrop" id="modal-sell">
-  <div class="modal">
+  <div class="modal" style="max-width:560px;">
     <div class="modal-title">💰 מכירת הנצחה</div>
     <div id="sell-comm-info" style="background:var(--bg);border-radius:10px;padding:14px;margin-bottom:20px;font-size:14px;line-height:1.6;"></div>
     <div class="error-msg" id="sell-error"></div>
     <div class="form-group">
-      <label>שם התורם *</label>
+      <label>שם התורם <span class="req">*</span></label>
       <input class="form-control" id="sell-donor-name" placeholder="שם מלא">
     </div>
     <div class="form-group">
-      <label>טלפון התורם *</label>
+      <label>טלפון התורם <span class="req">*</span></label>
       <input class="form-control" id="sell-donor-phone" type="tel" placeholder="05X-XXXXXXX">
     </div>
     <div class="form-group">
-      <label>מספר תרומה</label>
+      <label>מייל התורם</label>
+      <input class="form-control" id="sell-donor-email" type="email" placeholder="donor@example.com" dir="ltr">
+    </div>
+    <div class="form-group">
+      <label>מספר תורם</label>
+      <input class="form-control" id="sell-donor-number" placeholder="מספר תורם במערכת">
+    </div>
+    <div class="form-group">
+      <label>שם מתרים</label>
+      <input class="form-control" id="sell-fundraiser-name" placeholder="שם המתרים">
+    </div>
+    <div class="form-group">
+      <label>תת קטגוריה (מתרים)</label>
+      <input class="form-control" id="sell-fundraiser-sub" placeholder="תת קטגוריה">
+    </div>
+    <div class="form-group">
+      <label>נוסח להנצחה <span class="req">*</span></label>
+      <input class="form-control" id="sell-commemoration-names" placeholder="שם / שמות להנצחה (חובה)">
+    </div>
+    <div class="form-group">
+      <label>מקור התרומה <span class="req">*</span></label>
+      <select class="form-control" id="sell-source"></select>
+    </div>
+    <div class="form-group">
+      <label>אמצעי תשלום</label>
+      <select class="form-control" id="sell-payment-method">
+        <option value="">— בחר —</option>
+        <option value="העברה בנקאית">העברה בנקאית</option>
+        <option value="כרטיס אשראי">כרטיס אשראי</option>
+        <option value="מזומן">מזומן</option>
+        <option value="המחאה">המחאה</option>
+        <option value="אחר">אחר</option>
+      </select>
+    </div>
+    <div class="form-group">
+      <label>מספר תרומה / קבלה</label>
       <input class="form-control" id="sell-donation-number" placeholder="מספר קבלה">
     </div>
     <div class="form-group">
-      <label>שם / שמות להנצחה</label>
-      <input class="form-control" id="sell-commemoration-names" placeholder="שם / שמות להנצחה">
-    </div>
-    <div class="form-group">
-      <label>מקור התרומה *</label>
-      <select class="form-control" id="sell-source"></select>
+      <label>הערות</label>
+      <textarea class="form-control" id="sell-notes" rows="2" placeholder="הערות נוספות (רשות)" style="resize:vertical;"></textarea>
     </div>
     <div class="modal-actions">
       <button class="btn btn-ghost" onclick="closeModal('modal-sell')">ביטול</button>
@@ -508,8 +648,32 @@
       <input class="form-control" id="project-name" placeholder="שם הפרויקט">
     </div>
     <div class="form-group">
+      <label>תיאור הפרויקט</label>
+      <textarea class="form-control" id="project-description" rows="2" placeholder="תיאור קצר של הפרויקט (רשות)" style="resize:vertical;"></textarea>
+    </div>
+    <div class="form-group">
+      <label>שלב נוכחי</label>
+      <select class="form-control" id="project-stage">
+        <option value="">— בחר שלב —</option>
+      </select>
+    </div>
+    <div class="form-group">
+      <label>צפי לסיום</label>
+      <input class="form-control" type="date" id="project-expected-completion">
+    </div>
+    <div class="form-group">
       <label>הערות על הפרויקט</label>
-      <textarea class="form-control" id="project-notes" rows="3" placeholder="הערות כלליות לפרויקט (רשות)" style="resize:vertical;"></textarea>
+      <textarea class="form-control" id="project-notes" rows="2" placeholder="הערות כלליות לפרויקט (רשות)" style="resize:vertical;"></textarea>
+    </div>
+    <div class="form-group">
+      <label>עדיפות מכירה (1 = גבוהה ביותר, 5 = נמוכה ביותר)</label>
+      <select class="form-control" id="project-priority">
+        <option value="1">1 — עדיפות גבוהה מאוד</option>
+        <option value="2">2 — עדיפות גבוהה</option>
+        <option value="3" selected>3 — עדיפות בינונית (ברירת מחדל)</option>
+        <option value="4">4 — עדיפות נמוכה</option>
+        <option value="5">5 — עדיפות נמוכה מאוד</option>
+      </select>
     </div>
     <div class="modal-actions">
       <button class="btn btn-ghost" onclick="closeModal('modal-project')">ביטול</button>
@@ -522,6 +686,13 @@
 <div class="modal-backdrop" id="modal-comm">
   <div class="modal">
     <div class="modal-title" id="comm-modal-title">➕ הנצחה חדשה</div>
+    <div class="form-group" id="comm-whole-project-group">
+      <label style="display:flex;align-items:center;gap:8px;cursor:pointer;">
+        <input type="checkbox" id="comm-is-whole-project" onchange="toggleWholeProjectMode()">
+        <strong>הנצחת "כל הפרויקט"</strong>
+        <span style="font-size:12px;color:var(--text-muted)">— תפיסה/מכירה תחסום את כל שאר הפריטים</span>
+      </label>
+    </div>
     <div class="form-group" id="comm-type-group">
       <label>סוג הנצחה *</label>
       <select class="form-control" id="comm-type" onchange="fillCommPrice()"></select>
@@ -575,12 +746,53 @@
   </div>
 </div>
 
+<!-- FREE ITEM MODAL (admin) -->
+<div class="modal-backdrop" id="modal-free-comm">
+  <div class="modal">
+    <div class="modal-title">✏️ פריט הנצחה חופשי</div>
+    <p style="color:var(--text-muted);font-size:13px;margin-bottom:16px;">פריט עם שם ומחיר חופשיים, ללא קשר לסוג הנצחה.</p>
+    <div class="form-group">
+      <label>שם הפריט *</label>
+      <input class="form-control" id="free-comm-name" placeholder="לדוגמה: תרומה כללית">
+    </div>
+    <div class="form-group">
+      <label>מחיר (₪)</label>
+      <input class="form-control" id="free-comm-price" type="number" min="0" placeholder="0">
+    </div>
+    <div class="form-group">
+      <label>הערות</label>
+      <textarea class="form-control" id="free-comm-notes" rows="2" placeholder="הערות (רשות)" style="resize:vertical;"></textarea>
+    </div>
+    <div class="modal-actions">
+      <button class="btn btn-ghost" onclick="closeModal('modal-free-comm')">ביטול</button>
+      <button class="btn btn-primary" onclick="saveFreeComm()">הוסף פריט</button>
+    </div>
+  </div>
+</div>
+
+<!-- EXPIRED CAPTURES POPUP (admin login) -->
+<div class="modal-backdrop" id="modal-expired-captures">
+  <div class="modal" style="max-width:640px;">
+    <div class="modal-title" style="color:var(--warning);">⚠️ תפיסות שפג תוקפן</div>
+    <p style="color:var(--text-muted);font-size:14px;margin-bottom:16px;">הפריטים הבאים נתפסו ועדיין לא נמכרו. יש להחליט האם להמשיך לשמור או לשחרר:</p>
+    <div id="expired-list"></div>
+    <div class="modal-actions">
+      <button class="btn btn-ghost" onclick="closeModal('modal-expired-captures')">סגור (טפל מאוחר יותר)</button>
+      <button class="btn btn-primary" onclick="showPage('admin-expired');closeModal('modal-expired-captures')">📋 עבור לדף לטיפול</button>
+    </div>
+  </div>
+</div>
+
 <!-- TOAST -->
 <div class="toast-container" id="toast-container"></div>
+
+<!-- SheetJS for Excel export -->
+<script src="https://cdn.sheetjs.com/xlsx-latest/package/dist/xlsx.full.min.js"></script>
 
 <!-- Firebase SDK v9 compat -->
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-database-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-storage-compat.js"></script>
 
 <script>
 // ============================================================
@@ -604,10 +816,12 @@ const IS_CONFIGURED = FIREBASE_CONFIG.apiKey !== "YOUR_API_KEY";
 //  APP STATE
 // ============================================================
 let db = null;
+let storage = null;
 let currentUser = null;
 let appSettings = {
   captureExpiryDays: 3,
-  donationSources: ["מוקד מוריה", "מוקד בני ברק", "אירועים מוריה", "אחר"]
+  donationSources: ["מוקד מוריה", "מוקד בני ברק", "אירועים מוריה", "אחר"],
+  projectStages: ["תכנון", "בניה", "גימור", "סיום"]
 };
 let allTypes = {};
 let allProjects = {};
@@ -621,6 +835,7 @@ let editingUserId = null;
 let editingCommProjectId = null;
 let editingCommId = null;
 let commListener = null;
+let selectedExportProjects = new Set();
 
 // Demo data for unconfigured mode
 const DEMO_TYPES = {
@@ -642,9 +857,9 @@ const DEMO_TYPES = {
   't16': { name: 'הנצחה על שלט- סדר הכנות', isDefault: true, defaultPrice: 0 }
 };
 const DEMO_PROJECTS = {
-  'p1': { name: 'סיום הש"ס תשפ"ה', isActive: true, createdAt: Date.now() },
-  'p2': { name: 'מחזור לימוד תשפ"ה', isActive: true, createdAt: Date.now() },
-  'p3': { name: 'לימוד לעילוי נשמה', isActive: false, createdAt: Date.now() }
+  'p1': { name: 'סיום הש"ס תשפ"ה', isActive: true, createdAt: Date.now(), priority: 1 },
+  'p2': { name: 'מחזור לימוד תשפ"ה', isActive: true, createdAt: Date.now(), priority: 2 },
+  'p3': { name: 'לימוד לעילוי נשמה', isActive: false, createdAt: Date.now(), priority: 3 }
 };
 const DEMO_COMMS = {
   'c1': { projectId: 'p1', typeId: 't1', name: 'פסוק א׳', price: 500, status: 'available' },
@@ -664,6 +879,7 @@ function initFirebase() {
   try {
     firebase.initializeApp(FIREBASE_CONFIG);
     db = firebase.database();
+    storage = firebase.storage();
     return true;
   } catch(e) {
     console.error('Firebase init failed:', e);
@@ -761,8 +977,12 @@ async function startApp() {
     allComms = JSON.parse(JSON.stringify(DEMO_COMMS));
   }
 
-  if (currentUser.role === 'admin') showPage('admin-projects');
-  else showPage('projects');
+  if (currentUser.role === 'admin') {
+    showPage('admin-projects');
+    openExpiredCapturesModal();
+  } else {
+    showPage('projects');
+  }
 }
 
 async function loadSettings() {
@@ -771,6 +991,7 @@ async function loadSettings() {
     const s = snap.val();
     appSettings.captureExpiryDays = s.captureExpiryDays || 3;
     appSettings.donationSources = s.donationSources || appSettings.donationSources;
+    appSettings.projectStages = s.projectStages || appSettings.projectStages;
   } else {
     await db.ref('settings').set(appSettings);
   }
@@ -808,27 +1029,49 @@ async function checkExpiredCaptures() {
   const updates = {};
   snap.forEach(child => {
     const d = child.val();
-    if (d.captureExpiry && d.captureExpiry < now) {
-      updates[`commemorations/${child.key}/status`] = 'available';
-      updates[`commemorations/${child.key}/capturedBy`] = null;
-      updates[`commemorations/${child.key}/capturedByName`] = null;
-      updates[`commemorations/${child.key}/capturedAt`] = null;
-      updates[`commemorations/${child.key}/captureExpiry`] = null;
+    if (d.captureExpiry && d.captureExpiry < now && !d.captureExpiredAt) {
+      // Mark as expired — do NOT auto-release; admin must decide
+      updates[`commemorations/${child.key}/captureExpiredAt`] = now;
     }
   });
-  if (Object.keys(updates).length) await db.ref().update(updates);
+  if (Object.keys(updates).length) {
+    await db.ref().update(updates);
+  }
 }
 
 function checkExpiredLocal() {
   const now = Date.now();
   Object.entries(allComms).forEach(([id, c]) => {
-    if (c.status === 'captured' && c.captureExpiry && c.captureExpiry < now) {
-      allComms[id] = { ...c, status: 'available', capturedBy: null, capturedByName: null, capturedAt: null, captureExpiry: null };
-      if (IS_CONFIGURED) {
-        db.ref(`commemorations/${id}`).update({ status: 'available', capturedBy: null, capturedByName: null, capturedAt: null, captureExpiry: null });
-      }
+    if (c.status === 'captured' && c.captureExpiry && c.captureExpiry < now && !c.captureExpiredAt) {
+      allComms[id] = { ...c, captureExpiredAt: now };
     }
   });
+}
+
+async function handleExpiredCapture(commId, action, days) {
+  if (currentUser.role !== 'admin') return;
+  const now = Date.now();
+  if (action === 'release') {
+    const resetData = { status: 'available', capturedBy: null, capturedByName: null, capturedAt: null, captureExpiry: null, captureExpiredAt: null, capturedDonorName: null, captureFundraiserName: null, captureNote: null };
+    if (!IS_CONFIGURED) {
+      if (allComms[commId]) Object.assign(allComms[commId], resetData);
+    } else {
+      await db.ref(`commemorations/${commId}`).update(resetData);
+      await updateCaptureLogRelease(commId, now, 'expired');
+    }
+    showToast('הפריט שוחרר', 'success');
+  } else if (action === 'extend') {
+    const newExpiry = now + (days || appSettings.captureExpiryDays) * 86400000;
+    const extendData = { captureExpiry: newExpiry, captureExpiredAt: null };
+    if (!IS_CONFIGURED) {
+      if (allComms[commId]) Object.assign(allComms[commId], extendData);
+    } else {
+      await db.ref(`commemorations/${commId}`).update(extendData);
+    }
+    showToast(`התפיסה הוארכה ב-${days || appSettings.captureExpiryDays} ימים`, 'success');
+  }
+  // Refresh expired page if visible
+  if (currentPage === 'admin-expired') renderAdminExpiredPage();
 }
 
 // ============================================================
@@ -853,7 +1096,12 @@ function showPage(page, projectId) {
     'admin-users': renderAdminUsersPage,
     'admin-types': renderAdminTypesPage,
     'admin-settings': renderAdminSettingsPage,
-    'about': renderAboutPage
+    'admin-expired': renderAdminExpiredPage,
+    'all-comms': renderAllCommsPage,
+    'capture-history': renderCaptureHistoryPage,
+    'export-excel': renderExportExcelPage,
+    'about': renderAboutPage,
+    'search': renderSearchPage
   };
 
   if (routes[page]) routes[page]();
@@ -902,11 +1150,16 @@ function renderSetupBanner() {
 
 function renderProjectCard(id, p) {
   const closed = !p.isActive;
+  const stageColors = { 'תכנון': '#5C6BC0', 'בניה': '#F57C00', 'גימור': '#00897B', 'סיום': '#43A047' };
+  const stageBadge = p.stage ? `<span style="display:inline-flex;align-items:center;padding:2px 10px;border-radius:20px;font-size:11px;font-weight:700;background:${stageColors[p.stage]||'var(--primary)'};color:white;margin-right:6px;">📍 ${esc(p.stage)}</span>` : '';
+  const completionBadge = p.expectedCompletion ? `<span style="font-size:12px;color:var(--text-muted);">🗓 צפי: ${esc(p.expectedCompletion)}</span>` : '';
   return `<div class="project-card${closed ? ' status-closed-card' : ''}" onclick="showPage('project-detail','${id}')">
     <div class="project-card-name">${esc(p.name)}</div>
-    <span class="tag ${p.isActive ? 'tag-success' : 'tag-warning'}" style="margin-bottom:14px;display:inline-flex;">
-      ${p.isActive ? '● פעיל' : '⬤ סגור'}
-    </span>
+    <div style="display:flex;align-items:center;flex-wrap:wrap;gap:6px;margin-bottom:10px;">
+      <span class="tag ${p.isActive ? 'tag-success' : 'tag-warning'}">${p.isActive ? '● פעיל' : '⬤ סגור'}</span>
+      ${stageBadge}${completionBadge}
+    </div>
+    ${p.description ? `<div style="font-size:12px;color:var(--text-muted);margin-bottom:10px;line-height:1.5;">${esc(p.description)}</div>` : ''}
     <div class="progress-bar-wrap"><div class="progress-bar-fill" id="pb-${id}" style="width:0%"></div></div>
     <div class="progress-stats">
       <span id="ps-${id}" style="color:var(--text-muted)">טוען...</span>
@@ -1017,19 +1270,26 @@ function renderCommsGrid() {
 
   items.sort((a,b) => {
     const order = { available: 0, captured: 1, sold: 2 };
+    if (a[1].isWholeProject && !b[1].isWholeProject) return -1;
+    if (!a[1].isWholeProject && b[1].isWholeProject) return 1;
     return (order[a[1].status] || 0) - (order[b[1].status] || 0);
   });
 
-  container.innerHTML = `<div class="comms-grid">${items.map(([id,c]) => renderCommCard(id,c)).join('')}</div>`;
+  const wholeProjectActive = Object.values(allComms)
+    .some(c => c.isWholeProject && (c.status === 'captured' || c.status === 'sold'));
+
+  container.innerHTML = `<div class="comms-grid">${items.map(([id,c]) => renderCommCard(id, c, wholeProjectActive)).join('')}</div>`;
 }
 
-function renderCommCard(id, c) {
-  const type = allTypes[c.typeId]?.name || '';
+function renderCommCard(id, c, blockedByWhole) {
+  const type = allTypes[c.typeId]?.name || (c.isWholeProject ? 'כל הפרויקט' : '');
   const statusLabels = { available: 'פנויה', captured: 'תפוסה', sold: 'נמכרה' };
   const badgeClasses = { available: 'badge-available', captured: 'badge-captured', sold: 'badge-sold' };
   const project = allProjects[currentProjectId];
   const isProjectActive = project?.isActive;
   const isMine = c.capturedBy === currentUser.uid;
+
+  const isBlocked = blockedByWhole && !c.isWholeProject && c.status === 'available';
 
   let meta = '';
   if (c.status === 'captured') {
@@ -1037,10 +1297,12 @@ function renderCommCard(id, c) {
     meta = `<div class="comm-meta">תפוס ע"י: <strong>${esc(c.capturedByName||'')}</strong><br>פקיעה: ${expiryStr}</div>`;
   } else if (c.status === 'sold') {
     meta = `<div class="comm-meta">תורם: <strong>${esc(c.donorName||'')}</strong></div>`;
+  } else if (isBlocked) {
+    meta = `<div class="comm-meta" style="color:var(--text-muted);">חסומה — "כל הפרויקט" תפוס</div>`;
   }
 
   let actions = '';
-  if (isProjectActive) {
+  if (isProjectActive && !isBlocked) {
     if (c.status === 'available') {
       actions = `<div class="comm-actions">
         <button class="btn btn-primary btn-sm" onclick="event.stopPropagation();openCapture('${id}')">✋ תפוס</button>
@@ -1053,9 +1315,12 @@ function renderCommCard(id, c) {
     }
   }
 
-  return `<div class="comm-card status-${c.status}" onclick="openCommDetail('${id}')">
-    <span class="comm-status-badge ${badgeClasses[c.status]}">${statusLabels[c.status]}</span>
-    <div class="comm-card-name">${esc(c.name)}</div>
+  const cardStyle = isBlocked ? ' style="opacity:0.55;border-color:#ccc;"' : '';
+  const wholeProjectBadge = c.isWholeProject ? '<span style="font-size:11px;background:#FFF3E0;color:#E65100;border-radius:4px;padding:1px 6px;font-weight:600;margin-bottom:4px;display:inline-block;">⭐ כל הפרויקט</span><br>' : (c.isFreeItem ? '<span style="font-size:11px;background:rgba(107,76,139,0.12);color:var(--primary);border-radius:4px;padding:1px 6px;font-weight:600;margin-bottom:4px;display:inline-block;">✏️ חופשי</span><br>' : '');
+
+  return `<div class="comm-card status-${isBlocked ? 'blocked' : c.status}"${cardStyle} onclick="openCommDetail('${id}')">
+    <span class="comm-status-badge ${isBlocked ? 'badge-sold' : badgeClasses[c.status]}">${isBlocked ? '🔒 חסומה' : statusLabels[c.status]}</span>
+    <div class="comm-card-name">${wholeProjectBadge}${esc(c.name)}</div>
     <div class="comm-card-type">${esc(type)}</div>
     <div class="comm-card-price">₪${(c.price||0).toLocaleString()}</div>
     ${meta}${actions}
@@ -1068,21 +1333,43 @@ function renderCommCard(id, c) {
 function openCapture(commId) {
   const c = allComms[commId];
   if (!c || c.status !== 'available') { showToast('ההנצחה כבר לא זמינה', 'error'); renderCommsGrid(); return; }
+  if (!c.isWholeProject) {
+    const wholeBlocked = Object.values(allComms).some(w => w.isWholeProject && (w.status === 'captured' || w.status === 'sold'));
+    if (wholeBlocked) { showToast('לא ניתן לתפוס — הנצחת "כל הפרויקט" תפוסה', 'error'); return; }
+  }
   pendingCaptureId = commId;
   document.getElementById('capture-comm-name').textContent = c.name;
   document.getElementById('capture-expiry-days').textContent = appSettings.captureExpiryDays;
+  const defaultDate = new Date(Date.now() + appSettings.captureExpiryDays * 86400000);
+  document.getElementById('capture-until-date').value = defaultDate.toISOString().split('T')[0];
+  document.getElementById('capture-donor-name').value = '';
+  document.getElementById('capture-fundraiser-name').value = '';
+  document.getElementById('capture-note').value = '';
   openModal('modal-capture');
 }
 
 async function confirmCapture() {
   if (!pendingCaptureId) return;
   const commId = pendingCaptureId;
+
+  const dateVal = document.getElementById('capture-until-date').value;
+  let captureExpiry;
+  if (dateVal) {
+    captureExpiry = new Date(dateVal + 'T23:59:59').getTime();
+  } else {
+    captureExpiry = Date.now() + appSettings.captureExpiryDays * 86400000;
+  }
+
+  const capturedDonorName = document.getElementById('capture-donor-name').value.trim() || null;
+  const captureFundraiserName = document.getElementById('capture-fundraiser-name').value.trim() || null;
+  const captureNote = document.getElementById('capture-note').value.trim() || null;
+
   closeModal('modal-capture');
 
   if (!IS_CONFIGURED) {
     const c = allComms[commId];
     if (!c || c.status !== 'available') { showToast('ההנצחה כבר נתפסה', 'error'); renderCommsGrid(); return; }
-    allComms[commId] = { ...c, status: 'captured', capturedBy: currentUser.uid, capturedByName: currentUser.displayName, capturedAt: Date.now(), captureExpiry: Date.now() + appSettings.captureExpiryDays * 86400000 };
+    allComms[commId] = { ...c, status: 'captured', capturedBy: currentUser.uid, capturedByName: currentUser.displayName, capturedAt: Date.now(), captureExpiry, capturedDonorName, captureFundraiserName, captureNote, captureExpiredAt: null };
     renderCommsGrid(); renderCommsStats();
     showToast('ההנצחה נתפסה בהצלחה! ✋', 'success');
     return;
@@ -1090,13 +1377,23 @@ async function confirmCapture() {
 
   try {
     let success = false;
+    const capturedAt = Date.now();
     await db.ref(`commemorations/${commId}`).transaction(current => {
       if (!current || current.status !== 'available') return;
       success = true;
-      return { ...current, status: 'captured', capturedBy: currentUser.uid, capturedByName: currentUser.displayName, capturedAt: Date.now(), captureExpiry: Date.now() + appSettings.captureExpiryDays * 86400000 };
+      return { ...current, status: 'captured', capturedBy: currentUser.uid, capturedByName: currentUser.displayName, capturedAt, captureExpiry, capturedDonorName, captureFundraiserName, captureNote, captureExpiredAt: null };
     });
-    if (success) showToast('ההנצחה נתפסה בהצלחה! ✋', 'success');
-    else showToast('ההנצחה כבר נתפסה על ידי משתמש אחר', 'error');
+    if (success) {
+      const c = allComms[commId] || {};
+      await db.ref('captureLog').push({
+        commId, commName: c.name || '', projectId: c.projectId || currentProjectId || '',
+        capturedBy: currentUser.uid, capturedByName: currentUser.displayName,
+        capturedAt, captureExpiry, releasedAt: null, releaseReason: null
+      });
+      showToast('ההנצחה נתפסה בהצלחה! ✋', 'success');
+    } else {
+      showToast('ההנצחה כבר נתפסה על ידי משתמש אחר', 'error');
+    }
   } catch(e) {
     showToast('שגיאה: ' + e.message, 'error');
   }
@@ -1114,8 +1411,19 @@ async function releaseCapture(commId) {
     showToast('התפיסה שוחררה', 'success');
     return;
   }
+  const releasedAt = Date.now();
   await db.ref(`commemorations/${commId}`).update({ status: 'available', capturedBy: null, capturedByName: null, capturedAt: null, captureExpiry: null });
+  await updateCaptureLogRelease(commId, releasedAt, 'manual');
   showToast('התפיסה שוחררה', 'success');
+}
+
+async function updateCaptureLogRelease(commId, releasedAt, reason) {
+  if (!IS_CONFIGURED) return;
+  const snap = await db.ref('captureLog').orderByChild('commId').equalTo(commId).once('value');
+  if (!snap.exists()) return;
+  let lastKey = null;
+  snap.forEach(child => { if (!child.val().releasedAt) lastKey = child.key; });
+  if (lastKey) await db.ref(`captureLog/${lastKey}`).update({ releasedAt, releaseReason: reason });
 }
 
 // ============================================================
@@ -1130,28 +1438,54 @@ function openSell(commId) {
   document.getElementById('sell-comm-info').innerHTML = `
     <strong>${esc(c.name)}</strong> &nbsp;·&nbsp; ${esc(allTypes[c.typeId]?.name||'')} &nbsp;·&nbsp;
     <span style="color:var(--accent);font-weight:700;">₪${(c.price||0).toLocaleString()}</span>`;
-  ['sell-donor-name','sell-donor-phone','sell-donation-number','sell-commemoration-names'].forEach(id => document.getElementById(id).value = '');
+  ['sell-donor-name','sell-donor-phone','sell-donor-email','sell-donor-number',
+   'sell-fundraiser-name','sell-fundraiser-sub','sell-donation-number','sell-commemoration-names','sell-notes'].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.value = '';
+  });
+  document.getElementById('sell-payment-method').value = '';
   document.getElementById('sell-error').style.display = 'none';
   const sel = document.getElementById('sell-source');
   sel.innerHTML = appSettings.donationSources.map(s => `<option value="${esc(s)}">${esc(s)}</option>`).join('');
+  // Pre-fill fundraiser name from capture if available
+  if (c.captureFundraiserName) document.getElementById('sell-fundraiser-name').value = c.captureFundraiserName;
+  if (c.capturedDonorName) document.getElementById('sell-donor-name').value = c.capturedDonorName;
   openModal('modal-sell');
 }
 
 async function confirmSell() {
   const donorName = document.getElementById('sell-donor-name').value.trim();
   const donorPhone = document.getElementById('sell-donor-phone').value.trim();
+  const donorEmail = document.getElementById('sell-donor-email').value.trim();
+  const donorNumber = document.getElementById('sell-donor-number').value.trim();
+  const fundraiserName = document.getElementById('sell-fundraiser-name').value.trim();
+  const fundraiserSubCategory = document.getElementById('sell-fundraiser-sub').value.trim();
   const donationNumber = document.getElementById('sell-donation-number').value.trim();
   const commemorationNames = document.getElementById('sell-commemoration-names').value.trim();
   const source = document.getElementById('sell-source').value;
+  const paymentMethod = document.getElementById('sell-payment-method').value;
+  const saleNotes = document.getElementById('sell-notes').value.trim();
   const errEl = document.getElementById('sell-error');
   errEl.style.display = 'none';
 
-  if (!donorName || !donorPhone) { errEl.textContent = 'נא למלא שם וטלפון תורם'; errEl.style.display = 'block'; return; }
+  if (!donorName) { errEl.textContent = 'נא למלא שם תורם'; errEl.style.display = 'block'; return; }
+  if (!donorPhone) { errEl.textContent = 'נא למלא טלפון תורם'; errEl.style.display = 'block'; return; }
+  if (!commemorationNames) { errEl.textContent = 'נא למלא נוסח להנצחה'; errEl.style.display = 'block'; return; }
 
   const commId = pendingSellId;
+  const soldAt = Date.now();
+  const soldData = {
+    status: 'sold', donorName, donorPhone, donorEmail: donorEmail || null,
+    donorNumber: donorNumber || null, fundraiserName: fundraiserName || null,
+    fundraiserSubCategory: fundraiserSubCategory || null,
+    donationNumber: donationNumber || null, commemorationNames, donationSource: source,
+    paymentMethod: paymentMethod || null, saleNotes: saleNotes || null,
+    soldBy: currentUser.uid, soldByName: currentUser.displayName, soldAt,
+    capturedBy: null, capturedByName: null, capturedAt: null, captureExpiry: null, captureExpiredAt: null
+  };
 
   if (!IS_CONFIGURED) {
-    allComms[commId] = { ...allComms[commId], status: 'sold', donorName, donorPhone, donationNumber, commemorationNames, donationSource: source, soldBy: currentUser.uid, soldByName: currentUser.displayName, soldAt: Date.now(), capturedBy: null, capturedByName: null, capturedAt: null, captureExpiry: null };
+    allComms[commId] = { ...allComms[commId], ...soldData };
     closeModal('modal-sell');
     renderCommsGrid(); renderCommsStats();
     showToast('ההנצחה נמכרה בהצלחה! 🎉', 'success');
@@ -1165,11 +1499,8 @@ async function confirmSell() {
       errEl.textContent = 'מצב ההנצחה השתנה — נא לרענן ולנסות שוב';
       errEl.style.display = 'block'; return;
     }
-    await db.ref(`commemorations/${commId}`).update({
-      status: 'sold', donorName, donorPhone, donationNumber, commemorationNames, donationSource: source,
-      soldBy: currentUser.uid, soldByName: currentUser.displayName, soldAt: Date.now(),
-      capturedBy: null, capturedByName: null, capturedAt: null, captureExpiry: null
-    });
+    await db.ref(`commemorations/${commId}`).update(soldData);
+    await updateCaptureLogRelease(commId, soldAt, 'sold');
     closeModal('modal-sell');
     pendingSellId = null;
     showToast('ההנצחה נמכרה בהצלחה! 🎉', 'success');
@@ -1186,6 +1517,7 @@ function openCommDetail(commId) {
   if (!c) return;
   const type = allTypes[c.typeId]?.name || '';
   const statusLabels = { available: 'פנויה', captured: 'תפוסה', sold: 'נמכרה' };
+  const isAdmin = currentUser.role === 'admin';
 
   let html = `
     <div class="info-row"><span class="info-label">שם:</span><span>${esc(c.name)}</span></div>
@@ -1193,25 +1525,73 @@ function openCommDetail(commId) {
     <div class="info-row"><span class="info-label">מחיר:</span><span style="font-weight:700;color:var(--accent)">₪${(c.price||0).toLocaleString()}</span></div>
     <div class="info-row"><span class="info-label">סטאטוס:</span><span>${statusLabels[c.status]||''}</span></div>`;
 
+  if (c.notes) {
+    html += `<div class="info-row"><span class="info-label">הערות:</span><span>${esc(c.notes)}</span></div>`;
+  }
+
   if (c.status === 'captured') {
     html += `<hr class="divider">
       <div class="info-row"><span class="info-label">תפוס ע"י:</span><span>${esc(c.capturedByName||'')}</span></div>
-      <div class="info-row"><span class="info-label">פקיעה:</span><span>${c.captureExpiry ? formatDate(c.captureExpiry) : '-'}</span></div>`;
+      <div class="info-row"><span class="info-label">שם תורם:</span><span>${esc(c.capturedDonorName||'-')}</span></div>
+      <div class="info-row"><span class="info-label">שם מתרים:</span><span>${esc(c.captureFundraiserName||'-')}</span></div>
+      ${c.captureNote ? `<div class="info-row"><span class="info-label">הערה:</span><span>${esc(c.captureNote)}</span></div>` : ''}
+      <div class="info-row"><span class="info-label">פקיעה:</span><span>${c.captureExpiry ? formatDate(c.captureExpiry) : '-'}${c.captureExpiredAt ? ' <span style="color:var(--danger);font-weight:700;">⚠️ פג תוקף</span>' : ''}</span></div>`;
   } else if (c.status === 'sold') {
     html += `<hr class="divider">
       <div class="info-row"><span class="info-label">תורם:</span><span>${esc(c.donorName||'')}</span></div>
       <div class="info-row"><span class="info-label">טלפון:</span><span>${esc(c.donorPhone||'')}</span></div>
-      <div class="info-row"><span class="info-label">מס׳ תרומה:</span><span>${esc(c.donationNumber||'-')}</span></div>
-      <div class="info-row"><span class="info-label">מקור:</span><span>${esc(c.donationSource||'')}</span></div>
+      <div class="info-row"><span class="info-label">מייל:</span><span>${esc(c.donorEmail||'-')}</span></div>
+      <div class="info-row"><span class="info-label">מס׳ תורם:</span><span>${esc(c.donorNumber||'-')}</span></div>
+      <div class="info-row"><span class="info-label">שם מתרים:</span><span>${esc(c.fundraiserName||'-')}</span></div>
+      ${c.fundraiserSubCategory ? `<div class="info-row"><span class="info-label">תת קטגוריה:</span><span>${esc(c.fundraiserSubCategory)}</span></div>` : ''}
+      <div class="info-row"><span class="info-label">נוסח הנצחה:</span><span>${esc(c.commemorationNames||'-')}</span></div>
+      <div class="info-row"><span class="info-label">מקור:</span><span>${esc(c.donationSource||'-')}</span></div>
+      <div class="info-row"><span class="info-label">אמצעי תשלום:</span><span>${esc(c.paymentMethod||'-')}</span></div>
+      <div class="info-row"><span class="info-label">מס׳ קבלה:</span><span>${esc(c.donationNumber||'-')}</span></div>
+      ${c.saleNotes ? `<div class="info-row"><span class="info-label">הערות:</span><span>${esc(c.saleNotes)}</span></div>` : ''}
       <div class="info-row"><span class="info-label">נמכר ע"י:</span><span>${esc(c.soldByName||'')}</span></div>
       <div class="info-row"><span class="info-label">תאריך:</span><span>${c.soldAt ? formatDate(c.soldAt) : '-'}</span></div>`;
+
+    // Post-sale checklist (admin only)
+    const nameDisabled = c.approvalChecked ? 'disabled style="opacity:0.6;cursor:not-allowed;"' : '';
+    html += `<hr class="divider">
+      <div style="font-size:13px;font-weight:700;color:var(--primary-dark);margin-bottom:8px;">✅ סטאטוס הנצחה</div>`;
+
+    ['approvalChecked:אישור הנצחה', 'signPrinted:הדפסת שלט', 'signHung:תליית שלט'].forEach(pair => {
+      const [field, label] = pair.split(':');
+      const checked = c[field] ? 'checked' : '';
+      const isChecked = !!c[field];
+      const disabledAttr = (!isAdmin || (field === 'signPrinted' && !c.approvalChecked) || (field === 'signHung' && !c.signPrinted)) ? 'disabled' : '';
+      html += `<div class="checklist-row${isChecked ? ' checked' : ''}">
+        <input type="checkbox" id="chk-${field}" ${checked} ${isAdmin ? '' : 'disabled'}
+          onchange="adminUpdateCommChecklist('${commId}','${field}',this.checked)">
+        <label for="chk-${field}">${label}</label>
+        ${isChecked ? '<span style="color:var(--success);font-size:12px;">✓</span>' : ''}
+      </div>`;
+    });
+
+    // Image section
+    html += `<hr class="divider">
+      <div style="font-size:13px;font-weight:700;color:var(--primary-dark);margin-bottom:8px;">🖼️ תמונת הנצחה</div>`;
+    if (c.imageUrl) {
+      html += `<img src="${esc(c.imageUrl)}" class="image-preview" alt="תמונת הנצחה">
+        ${isAdmin ? `<button class="btn btn-ghost btn-sm" style="margin-top:8px;" onclick="sendDonorEmail('${commId}')">📧 שלח מייל לתורם</button>` : ''}`;
+    } else {
+      html += `<div style="color:var(--text-muted);font-size:13px;margin-bottom:8px;">אין תמונה עדיין</div>`;
+    }
+    if (isAdmin) {
+      html += `<div class="image-upload-area" style="margin-top:10px;" onclick="document.getElementById('img-upload-${commId}').click()">
+        <input type="file" id="img-upload-${commId}" accept="image/*" style="display:none;" onchange="uploadCommImage('${commId}',this)">
+        <div style="font-size:13px;color:var(--text-muted);">📎 לחץ להעלאת תמונה</div>
+      </div>`;
+    }
   }
 
   document.getElementById('detail-title').textContent = c.name;
   document.getElementById('detail-content').innerHTML = html;
 
   let actionsHtml = `<button class="btn btn-ghost" onclick="closeModal('modal-comm-detail')">סגור</button>`;
-  if (currentUser.role === 'admin' && c.status !== 'available') {
+  if (isAdmin && c.status !== 'available') {
     actionsHtml = `<button class="btn btn-danger btn-sm" onclick="adminResetComm('${commId}')">↩ איפוס לפנוי</button>` + actionsHtml;
   }
   document.getElementById('detail-actions').innerHTML = actionsHtml;
@@ -1220,7 +1600,7 @@ function openCommDetail(commId) {
 
 async function adminResetComm(commId) {
   if (!confirm('לאפס הנצחה זו חזרה למצב פנוי?')) return;
-  const resetData = { status: 'available', capturedBy: null, capturedByName: null, capturedAt: null, captureExpiry: null, donorName: null, donorPhone: null, donationNumber: null, donationSource: null, soldBy: null, soldByName: null, soldAt: null };
+  const resetData = { status: 'available', capturedBy: null, capturedByName: null, capturedAt: null, captureExpiry: null, captureExpiredAt: null, capturedDonorName: null, captureFundraiserName: null, captureNote: null, donorName: null, donorPhone: null, donorEmail: null, donorNumber: null, fundraiserName: null, fundraiserSubCategory: null, donationNumber: null, donationSource: null, paymentMethod: null, saleNotes: null, soldBy: null, soldByName: null, soldAt: null };
   if (!IS_CONFIGURED) {
     allComms[commId] = { ...allComms[commId], ...resetData };
     closeModal('modal-comm-detail'); renderCommsGrid(); renderCommsStats(); return;
@@ -1231,15 +1611,245 @@ async function adminResetComm(commId) {
 }
 
 // ============================================================
+//  ADMIN CHECKLIST / IMAGE / EMAIL
+// ============================================================
+async function adminUpdateCommChecklist(commId, field, value) {
+  if (currentUser.role !== 'admin') return;
+  const updates = { [field]: value };
+  if (allComms[commId]) Object.assign(allComms[commId], updates);
+  if (!IS_CONFIGURED) return;
+  await db.ref(`commemorations/${commId}`).update(updates);
+  showToast(value ? '✅ עודכן' : '✓ בוטל', 'success');
+}
+
+async function uploadCommImage(commId, input) {
+  const file = input.files[0];
+  if (!file) return;
+  if (file.size > 5 * 1024 * 1024) { showToast('הקובץ גדול מדי (מקסימום 5MB)', 'error'); return; }
+  if (!IS_CONFIGURED || !storage) { showToast('העלאת תמונה דורשת Firebase Storage מוגדר', 'warning'); return; }
+  showToast('מעלה תמונה...', '');
+  try {
+    const ref = storage.ref(`commemorations/${commId}/image`);
+    await ref.put(file);
+    const url = await ref.getDownloadURL();
+    await db.ref(`commemorations/${commId}`).update({ imageUrl: url });
+    if (allComms[commId]) allComms[commId].imageUrl = url;
+    showToast('התמונה הועלתה בהצלחה', 'success');
+    openCommDetail(commId);
+  } catch(e) {
+    showToast('שגיאה בהעלאת תמונה: ' + e.message, 'error');
+  }
+}
+
+function sendDonorEmail(commId) {
+  const c = allComms[commId];
+  if (!c || !c.donorEmail) { showToast('אין כתובת מייל לתורם', 'error'); return; }
+  const subject = encodeURIComponent('הנצחה: ' + c.name);
+  const body = encodeURIComponent(
+    'שלום ' + (c.donorName||'') + ',\n\nתודה על תרומתך.\nפרטי ההנצחה:\nשם: ' + c.name +
+    '\nשמות להנצחה: ' + (c.commemorationNames||'-') +
+    (c.imageUrl ? '\n\nתמונת ההנצחה:\n' + c.imageUrl : '') +
+    '\n\nבברכה,\nצוות טהרת המשפחה'
+  );
+  window.open('mailto:' + c.donorEmail + '?subject=' + subject + '&body=' + body);
+}
+
+// ============================================================
+//  ALL COMMS PAGE
+// ============================================================
+async function renderAllCommsPage() {
+  setTopbar('כל ההנצחות', '<button class="btn btn-primary btn-sm" onclick="exportAllCommsToExcel()">📥 ייצוא לאקסל</button>');
+  const content = document.getElementById('page-content');
+  content.innerHTML = '<div class="empty-state"><div class="empty-icon">⏳</div><h3>טוען...</h3></div>';
+  let comms = {};
+  if (IS_CONFIGURED) {
+    const snap = await db.ref('commemorations').once('value');
+    if (snap.exists()) snap.forEach(c => { comms[c.key] = c.val(); });
+    await loadProjects();
+  } else { comms = Object.assign({}, allComms); }
+  const statusLabels = { available: 'פנויה', captured: 'תפוסה', sold: 'נמכרה' };
+  const statusTagClass = { available: 'tag-success', captured: 'tag-warning', sold: 'tag-gray' };
+  const rows = Object.entries(comms)
+    .sort((a,b) => ({'available':0,'captured':1,'sold':2}[a[1].status]||0) - ({'available':0,'captured':1,'sold':2}[b[1].status]||0))
+    .map(function(entry) {
+      const id = entry[0]; const c = entry[1];
+      return '<tr><td><strong>' + esc(c.name) + '</strong></td><td>' + esc(allTypes[c.typeId]&&allTypes[c.typeId].name||'') + '</td><td>' +
+        esc(allProjects[c.projectId]&&allProjects[c.projectId].name||'') + '</td><td>₪' + ((c.price||0).toLocaleString()) + '</td><td><span class="tag ' +
+        (statusTagClass[c.status]||'') + '">' + (statusLabels[c.status]||'') + '</span></td><td>' + esc(c.donorName||c.capturedByName||'') + '</td><td>' +
+        esc(c.donorPhone||'') + '</td><td>' + esc(c.commemorationNames||'') + '</td><td>' +
+        (c.soldAt ? formatDate(c.soldAt) : c.capturedAt ? formatDate(c.capturedAt) : '-') + '</td></tr>';
+    }).join('');
+  content.innerHTML = '<div style="margin-bottom:12px;font-size:14px;color:var(--text-muted);">סה"כ: ' + Object.keys(comms).length + ' הנצחות</div>' +
+    '<div class="table-wrap"><table class="data-table"><thead><tr><th>שם</th><th>סוג</th><th>פרויקט</th><th>מחיר</th><th>סטאטוס</th><th>שם</th><th>טלפון</th><th>נוסח</th><th>תאריך</th></tr></thead><tbody>' +
+    (rows || '<tr><td colspan="9" style="text-align:center;padding:40px;">אין הנצחות</td></tr>') + '</tbody></table></div>';
+}
+
+// ============================================================
+//  CAPTURE HISTORY PAGE
+// ============================================================
+async function renderCaptureHistoryPage() {
+  setTopbar('היסטוריית תפיסות', '');
+  const content = document.getElementById('page-content');
+  if (!IS_CONFIGURED) {
+    content.innerHTML = '<div class="empty-state"><div class="empty-icon">📜</div><h3>זמין רק במצב מחובר</h3></div>';
+    return;
+  }
+  content.innerHTML = '<div class="empty-state"><div class="empty-icon">⏳</div><h3>טוען...</h3></div>';
+  const snap = await db.ref('captureLog').orderByChild('capturedAt').once('value');
+  const logs = [];
+  if (snap.exists()) snap.forEach(function(c) { logs.push(Object.assign({ key: c.key }, c.val())); });
+  logs.reverse();
+  const releaseLabels = { manual: 'שוחרר ידנית', expired: 'פג תוקף', sold: 'נמכר' };
+  const releaseClasses = { manual: 'release-manual', expired: 'release-expired', sold: 'release-sold' };
+  const rows = logs.map(function(l) {
+    const relBadge = l.releaseReason ? '<span class="release-badge ' + (releaseClasses[l.releaseReason]||'') + '">' + (releaseLabels[l.releaseReason]||l.releaseReason) + '</span>' : '-';
+    return '<tr><td><strong>' + esc(l.commName||'') + '</strong></td><td>' +
+      esc(allProjects[l.projectId]&&allProjects[l.projectId].name||'') + '</td><td>' + esc(l.capturedByName||'') + '</td><td>' +
+      (l.capturedAt ? formatDate(l.capturedAt) : '-') + '</td><td>' + (l.captureExpiry ? formatDate(l.captureExpiry) : '-') + '</td><td>' +
+      (l.releasedAt ? formatDate(l.releasedAt) : '<span class="release-badge release-pending">פעיל</span>') + '</td><td>' + relBadge + '</td></tr>';
+  }).join('');
+  content.innerHTML = '<div style="margin-bottom:12px;font-size:14px;color:var(--text-muted);">סה"כ: ' + logs.length + ' תפיסות</div>' +
+    '<div class="table-wrap"><table class="data-table history-table"><thead><tr><th>הנצחה</th><th>פרויקט</th><th>נתפס ע"י</th><th>תאריך תפיסה</th><th>שחרור מתוכנן</th><th>שוחרר בפועל</th><th>סיבה</th></tr></thead><tbody>' +
+    (rows || '<tr><td colspan="7" style="text-align:center;padding:40px;">אין נתונים</td></tr>') + '</tbody></table></div>';
+}
+
+// ============================================================
+//  EXPORT EXCEL PAGE
+// ============================================================
+async function renderExportExcelPage() {
+  setTopbar('ייצוא לאקסל', '');
+  if (IS_CONFIGURED) await loadProjects();
+  selectedExportProjects.clear();
+  const projectItems = Object.entries(allProjects).map(function(entry) {
+    const id = entry[0]; const p = entry[1];
+    return '<div class="export-project-item" id="exp-item-' + id + '" onclick="toggleExportProject(\'' + id + '\')">' +
+      '<input type="checkbox" id="exp-chk-' + id + '" onclick="event.stopPropagation()" onchange="toggleExportProject(\'' + id + '\')">' +
+      '<div><div style="font-weight:600;">' + esc(p.name) + '</div>' +
+      '<div style="font-size:12px;color:var(--text-muted);">' + (p.isActive ? 'פעיל' : 'סגור') + '</div></div></div>';
+  }).join('');
+  document.getElementById('page-content').innerHTML =
+    '<div class="card"><div class="card-title">📥 ייצוא לפי פרויקט</div>' +
+    '<p style="color:var(--text-muted);font-size:13px;margin-bottom:16px;">סמן פרויקטים — כל פרויקט יצא בלשונית נפרדת באקסל.</p>' +
+    '<div style="display:flex;gap:10px;margin-bottom:12px;">' +
+    '<button class="btn btn-ghost btn-sm" onclick="selectAllExportProjects(true)">בחר הכל</button>' +
+    '<button class="btn btn-ghost btn-sm" onclick="selectAllExportProjects(false)">נקה הכל</button></div>' +
+    (projectItems || '<p style="color:var(--text-muted);">אין פרויקטים</p>') +
+    '<div style="margin-top:20px;"><button class="btn btn-primary" onclick="exportSelectedProjectsToExcel()">📥 ייצוא פרויקטים נבחרים</button></div></div>' +
+    '<div class="card"><div class="card-title">📊 ייצוא כל ההנצחות</div>' +
+    '<p style="color:var(--text-muted);font-size:13px;margin-bottom:16px;">כל ההנצחות במערכת בגיליון אחד.</p>' +
+    '<button class="btn btn-accent" onclick="exportAllCommsToExcel()">📊 ייצוא הכל</button></div>';
+}
+
+function toggleExportProject(id) {
+  if (selectedExportProjects.has(id)) {
+    selectedExportProjects.delete(id);
+    var item = document.getElementById('exp-item-' + id);
+    if (item) item.classList.remove('selected');
+    var chk = document.getElementById('exp-chk-' + id);
+    if (chk) chk.checked = false;
+  } else {
+    selectedExportProjects.add(id);
+    var item = document.getElementById('exp-item-' + id);
+    if (item) item.classList.add('selected');
+    var chk = document.getElementById('exp-chk-' + id);
+    if (chk) chk.checked = true;
+  }
+}
+
+function selectAllExportProjects(select) {
+  Object.keys(allProjects).forEach(function(id) {
+    if (select) selectedExportProjects.add(id); else selectedExportProjects.delete(id);
+    var item = document.getElementById('exp-item-' + id);
+    if (item) item.classList.toggle('selected', select);
+    var chk = document.getElementById('exp-chk-' + id);
+    if (chk) chk.checked = select;
+  });
+}
+
+function commToExcelRow(c, projectName) {
+  const statusLabels = { available: 'פנויה', captured: 'תפוסה', sold: 'נמכרה' };
+  const row = {};
+  row['פרויקט'] = projectName||''; row['שם הנצחה'] = c.name||''; row['סוג'] = (allTypes[c.typeId]&&allTypes[c.typeId].name)||'';
+  row['מחיר'] = c.price||0; row['סטאטוס'] = statusLabels[c.status]||'';
+  row['שם תורם'] = c.donorName||''; row['טלפון'] = c.donorPhone||''; row['מייל'] = c.donorEmail||'';
+  row['מספר תורם'] = c.donorNumber||''; row['שם מתרים'] = c.fundraiserName||''; row['תת קטגוריה מתרים'] = c.fundraiserSubCategory||'';
+  row['נוסח הנצחה'] = c.commemorationNames||''; row['מקור תרומה'] = c.donationSource||'';
+  row['אמצעי תשלום'] = c.paymentMethod||''; row['מספר קבלה'] = c.donationNumber||'';
+  row['הערות מכירה'] = c.saleNotes||''; row['נמכר ע"י'] = c.soldByName||'';
+  row['תאריך מכירה'] = c.soldAt ? new Date(c.soldAt).toLocaleDateString('he-IL') : '';
+  row['תפוס ע"י'] = c.capturedByName||'';
+  row['תאריך תפיסה'] = c.capturedAt ? new Date(c.capturedAt).toLocaleDateString('he-IL') : '';
+  row['פקיעת תפיסה'] = c.captureExpiry ? new Date(c.captureExpiry).toLocaleDateString('he-IL') : '';
+  row['אישור הנצחה'] = c.approvalChecked ? 'כן' : 'לא';
+  row['הדפסת שלט'] = c.signPrinted ? 'כן' : 'לא';
+  row['תליית שלט'] = c.signHung ? 'כן' : 'לא';
+  row['הערות'] = c.notes||'';
+  return row;
+}
+
+async function exportSelectedProjectsToExcel() {
+  if (!selectedExportProjects.size) { showToast('נא לבחור לפחות פרויקט אחד', 'warning'); return; }
+  if (typeof XLSX === 'undefined') { showToast('ספריית Excel לא נטענה', 'error'); return; }
+  const wb = XLSX.utils.book_new();
+  for (const projectId of selectedExportProjects) {
+    const project = allProjects[projectId];
+    if (!project) continue;
+    let comms = {};
+    if (IS_CONFIGURED) {
+      const snap = await db.ref('commemorations').orderByChild('projectId').equalTo(projectId).once('value');
+      if (snap.exists()) snap.forEach(function(c) { comms[c.key] = c.val(); });
+    } else {
+      Object.entries(allComms).filter(function(e) { return e[1].projectId === projectId; }).forEach(function(e) { comms[e[0]] = e[1]; });
+    }
+    const rows = Object.values(comms).map(function(c) { return commToExcelRow(c, project.name); });
+    const ws = XLSX.utils.json_to_sheet(rows);
+    const sheetName = project.name.substring(0,31).replace(/[:\\\/\?\*\[\]]/g,'');
+    XLSX.utils.book_append_sheet(wb, ws, sheetName||('פרויקט_'+projectId));
+  }
+  XLSX.writeFile(wb, 'הנצחות_' + new Date().toLocaleDateString('he-IL').replace(/\./g,'-') + '.xlsx');
+  showToast('הקובץ הורד בהצלחה', 'success');
+}
+
+async function exportAllCommsToExcel() {
+  if (typeof XLSX === 'undefined') { showToast('ספריית Excel לא נטענה', 'error'); return; }
+  let comms = {};
+  if (IS_CONFIGURED) {
+    const snap = await db.ref('commemorations').once('value');
+    if (snap.exists()) snap.forEach(function(c) { comms[c.key] = c.val(); });
+    await loadProjects();
+  } else { comms = Object.assign({}, allComms); }
+  const rows = Object.values(comms).map(function(c) { return commToExcelRow(c, (allProjects[c.projectId]&&allProjects[c.projectId].name)||''); });
+  const ws = XLSX.utils.json_to_sheet(rows);
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, 'כל ההנצחות');
+  XLSX.writeFile(wb, 'כל_ההנצחות_' + new Date().toLocaleDateString('he-IL').replace(/\./g,'-') + '.xlsx');
+  showToast('הקובץ הורד בהצלחה', 'success');
+}
+
+// ============================================================
 //  ADMIN: PROJECTS
 // ============================================================
 async function renderAdminProjectsPage() {
   setTopbar('ניהול פרויקטים', `<button class="btn btn-primary btn-sm" onclick="openProjectModal()">➕ פרויקט חדש</button>`);
   if (IS_CONFIGURED) await loadProjects();
 
-  const rows = Object.entries(allProjects).sort((a,b) => (b[1].createdAt||0)-(a[1].createdAt||0)).map(([id,p]) => `
+  const stageColors = { 'תכנון': '#5C6BC0', 'בניה': '#F57C00', 'גימור': '#00897B', 'סיום': '#43A047' };
+  const rows = Object.entries(allProjects).sort((a,b) => {
+    const pa = a[1].priority || 3, pb = b[1].priority || 3;
+    if (pa !== pb) return pa - pb;
+    return (b[1].createdAt||0) - (a[1].createdAt||0);
+  }).map(([id,p]) => `
     <tr>
-      <td><strong>${esc(p.name)}</strong>${p.notes ? `<div style="font-size:12px;color:var(--text-muted);margin-top:4px;">${esc(p.notes)}</div>` : ''}</td>
+      <td style="text-align:center;"><span class="priority-badge priority-${p.priority||3}">${p.priority||3}</span></td>
+      <td>
+        <strong>${esc(p.name)}</strong>
+        ${p.description ? `<div style="font-size:12px;color:var(--text-muted);margin-top:2px;">${esc(p.description)}</div>` : ''}
+        ${p.notes ? `<div style="font-size:12px;color:var(--text-muted);margin-top:2px;">📝 ${esc(p.notes)}</div>` : ''}
+      </td>
+      <td>
+        ${p.stage ? `<span style="display:inline-block;padding:2px 10px;border-radius:20px;font-size:11px;font-weight:700;background:${stageColors[p.stage]||'var(--primary)'};color:white;margin-bottom:4px;">📍 ${esc(p.stage)}</span><br>` : ''}
+        ${p.expectedCompletion ? `<span style="font-size:12px;color:var(--text-muted);">🗓 ${esc(p.expectedCompletion)}</span>` : ''}
+      </td>
       <td><span class="tag ${p.isActive?'tag-success':'tag-warning'}">${p.isActive?'פעיל':'סגור'}</span></td>
       <td>
         <div class="btn-row">
@@ -1254,8 +1864,8 @@ async function renderAdminProjectsPage() {
   document.getElementById('page-content').innerHTML = `
     <div class="table-wrap">
       <table class="data-table">
-        <thead><tr><th>שם פרויקט</th><th>סטאטוס</th><th>פעולות</th></tr></thead>
-        <tbody>${rows || '<tr><td colspan="3" style="text-align:center;padding:40px;color:var(--text-muted)">אין פרויקטים — צור פרויקט חדש</td></tr>'}</tbody>
+        <thead><tr><th>עדיפות</th><th>שם פרויקט</th><th>שלב / צפי</th><th>סטאטוס</th><th>פעולות</th></tr></thead>
+        <tbody>${rows || '<tr><td colspan="5" style="text-align:center;padding:40px;color:var(--text-muted)">אין פרויקטים — צור פרויקט חדש</td></tr>'}</tbody>
       </table>
     </div>`;
 }
@@ -1263,25 +1873,41 @@ async function renderAdminProjectsPage() {
 function openProjectModal(id) {
   editingProjectId = id || null;
   document.getElementById('project-modal-title').textContent = id ? '✏️ עריכת פרויקט' : '➕ פרויקט חדש';
-  document.getElementById('project-name').value = id ? allProjects[id].name : '';
-  document.getElementById('project-notes').value = id ? (allProjects[id].notes || '') : '';
+  const p = id ? allProjects[id] : null;
+  document.getElementById('project-name').value = p ? p.name : '';
+  document.getElementById('project-description').value = p ? (p.description || '') : '';
+  document.getElementById('project-notes').value = p ? (p.notes || '') : '';
+  document.getElementById('project-priority').value = p ? (p.priority || 3) : 3;
+  document.getElementById('project-expected-completion').value = p ? (p.expectedCompletion || '') : '';
+  const stageEl = document.getElementById('project-stage');
+  stageEl.innerHTML = '<option value="">— בחר שלב —</option>' +
+    appSettings.projectStages.map(s => `<option value="${esc(s)}"${p && p.stage === s ? ' selected' : ''}>${esc(s)}</option>`).join('');
   openModal('modal-project');
 }
 
 async function saveProject() {
   const name = document.getElementById('project-name').value.trim();
+  const description = document.getElementById('project-description').value.trim();
   const notes = document.getElementById('project-notes').value.trim();
+  const priority = parseInt(document.getElementById('project-priority').value) || 3;
+  const stage = document.getElementById('project-stage').value || null;
+  const expectedCompletion = document.getElementById('project-expected-completion').value || null;
   if (!name) { showToast('נא להזין שם פרויקט', 'error'); return; }
 
+  const projectData = { name, description: description || null, notes: notes || null, priority, stage, expectedCompletion };
+
   if (!IS_CONFIGURED) {
-    if (editingProjectId) { allProjects[editingProjectId].name = name; allProjects[editingProjectId].notes = notes || null; }
-    else { allProjects['p'+Date.now()] = { name, notes: notes || null, isActive: true, createdAt: Date.now() }; }
+    if (editingProjectId) {
+      Object.assign(allProjects[editingProjectId], projectData);
+    } else {
+      allProjects['p'+Date.now()] = { ...projectData, isActive: true, createdAt: Date.now() };
+    }
     closeModal('modal-project'); renderAdminProjectsPage(); return;
   }
   if (editingProjectId) {
-    await db.ref(`projects/${editingProjectId}`).update({ name, notes: notes || null });
+    await db.ref(`projects/${editingProjectId}`).update(projectData);
   } else {
-    await db.ref('projects').push({ name, notes: notes || null, isActive: true, createdAt: Date.now() });
+    await db.ref('projects').push({ ...projectData, isActive: true, createdAt: Date.now() });
   }
   closeModal('modal-project');
   await loadProjects(); renderAdminProjectsPage();
@@ -1331,8 +1957,8 @@ async function renderAdminProjectCommsPage() {
   const statusTagClass = { available: 'tag-success', captured: 'tag-warning', sold: 'tag-gray' };
   const rows = Object.entries(comms).map(([id,c]) => `
     <tr>
-      <td><strong>${esc(c.name)}</strong>${c.notes ? `<div style="font-size:12px;color:var(--text-muted);margin-top:2px;">${esc(c.notes)}</div>` : ''}</td>
-      <td>${esc(allTypes[c.typeId]?.name||'')}</td>
+      <td><strong>${esc(c.name)}</strong>${c.isWholeProject ? ' <span class="tag tag-warning" style="font-size:11px;vertical-align:middle;">⭐ כל הפרויקט</span>' : ''}${c.isFreeItem ? ' <span class="tag tag-primary" style="font-size:11px;vertical-align:middle;">✏️ חופשי</span>' : ''}${c.notes ? `<div style="font-size:12px;color:var(--text-muted);margin-top:2px;">${esc(c.notes)}</div>` : ''}</td>
+      <td>${esc(allTypes[c.typeId]?.name||(c.isFreeItem?'פריט חופשי':''))}</td>
       <td>₪${(c.price||0).toLocaleString()}</td>
       <td><span class="tag ${statusTagClass[c.status]||''}">${statusLabels[c.status]||''}</span></td>
       <td>
@@ -1360,7 +1986,10 @@ async function renderAdminProjectCommsPage() {
     </div>
 <div class="section-header">
       <h2>הנצחות בפרויקט (${Object.keys(comms).length})</h2>
-      <button class="btn btn-primary btn-sm" onclick="openCommModal('${currentProjectId}')">➕ הנצחה חדשה</button>
+      <div style="display:flex;gap:8px;">
+        <button class="btn btn-primary btn-sm" onclick="openCommModal('${currentProjectId}')">➕ הנצחה חדשה</button>
+        <button class="btn btn-ghost btn-sm" onclick="openFreeCommModal('${currentProjectId}')">✏️ פריט חופשי</button>
+      </div>
     </div>
     <div class="table-wrap">
       <table class="data-table">
@@ -1373,9 +2002,14 @@ async function renderAdminProjectCommsPage() {
 function editComm(commId) {
   const c = allComms[commId];
   if (!c) return;
+  if (c.approvalChecked) {
+    showToast('לא ניתן לשנות הנצחה לאחר אישור ההנצחה', 'error'); return;
+  }
   editingCommId = commId;
   editingCommProjectId = c.projectId;
   document.getElementById('comm-modal-title').textContent = '✏️ עריכת הנצחה';
+  if (document.getElementById('comm-whole-project-group')) document.getElementById('comm-whole-project-group').style.display = 'none';
+  if (document.getElementById('comm-is-whole-project')) document.getElementById('comm-is-whole-project').checked = false;
   document.getElementById('comm-type-group').style.display = 'none';
   document.getElementById('comm-type-display').style.display = '';
   document.getElementById('comm-type-name').value = allTypes[c.typeId]?.name || c.name;
@@ -1401,11 +2035,20 @@ async function openCommModal(projectId) {
 
   document.getElementById('comm-modal-title').textContent = '➕ הנצחה חדשה';
   document.getElementById('comm-notes').value = '';
+  document.getElementById('comm-is-whole-project').checked = false;
+  document.getElementById('comm-whole-project-group').style.display = '';
   document.getElementById('comm-type-group').style.display = '';
   document.getElementById('comm-type-display').style.display = 'none';
   document.getElementById('comm-type').innerHTML = availableTypes.map(([id,t]) => `<option value="${id}">${esc(t.name)}</option>`).join('');
   fillCommPrice();
   openModal('modal-comm');
+}
+
+function toggleWholeProjectMode() {
+  const isWhole = document.getElementById('comm-is-whole-project').checked;
+  document.getElementById('comm-type-group').style.display = isWhole ? 'none' : '';
+  document.getElementById('comm-type-display').style.display = isWhole ? '' : 'none';
+  if (isWhole) document.getElementById('comm-type-name').value = 'כל הפרויקט';
 }
 
 function fillCommPrice() {
@@ -1430,6 +2073,22 @@ async function saveComm() {
     await db.ref(`commemorations/${editingCommId}`).update(updates);
     closeModal('modal-comm'); renderAdminProjectCommsPage();
     showToast('ההנצחה עודכנה', 'success');
+    return;
+  }
+
+  const isWholeProject = document.getElementById('comm-is-whole-project')?.checked;
+
+  if (isWholeProject) {
+    const alreadyHasWhole = Object.values(allComms).some(c => c.projectId === editingCommProjectId && c.isWholeProject);
+    if (alreadyHasWhole) { showToast('כבר קיימת הנצחת "כל הפרויקט" בפרויקט זה', 'error'); return; }
+    const data = { projectId: editingCommProjectId, typeId: null, name: 'כל הפרויקט', isWholeProject: true, price, notes: notes || null, status: 'available', capturedBy: null, capturedByName: null, capturedAt: null, captureExpiry: null, donorName: null, donorPhone: null, donationNumber: null, donationSource: null, soldBy: null, soldByName: null, soldAt: null };
+    if (!IS_CONFIGURED) {
+      allComms['c'+Date.now()] = data;
+      closeModal('modal-comm'); renderAdminProjectCommsPage(); return;
+    }
+    await db.ref('commemorations').push(data);
+    closeModal('modal-comm'); renderAdminProjectCommsPage();
+    showToast('הנצחת "כל הפרויקט" נוספה', 'success');
     return;
   }
 
@@ -1470,6 +2129,37 @@ async function deleteComm(commId) {
   await db.ref(`commemorations/${commId}`).remove();
   renderAdminProjectCommsPage();
   showToast('ההנצחה נמחקה', 'success');
+}
+
+function openFreeCommModal(projectId) {
+  editingCommProjectId = projectId;
+  document.getElementById('free-comm-name').value = '';
+  document.getElementById('free-comm-price').value = '';
+  document.getElementById('free-comm-notes').value = '';
+  openModal('modal-free-comm');
+}
+
+async function saveFreeComm() {
+  const name = document.getElementById('free-comm-name').value.trim();
+  const price = parseFloat(document.getElementById('free-comm-price').value) || 0;
+  const notes = document.getElementById('free-comm-notes').value.trim();
+  if (!name) { showToast('נא להזין שם לפריט', 'error'); return; }
+
+  const data = {
+    projectId: editingCommProjectId, typeId: null, name, isFreeItem: true,
+    isWholeProject: false, price, notes: notes || null, status: 'available',
+    capturedBy: null, capturedByName: null, capturedAt: null, captureExpiry: null,
+    captureExpiredAt: null, donorName: null, donorPhone: null, donationNumber: null,
+    donationSource: null, soldBy: null, soldByName: null, soldAt: null
+  };
+
+  if (!IS_CONFIGURED) {
+    allComms['c'+Date.now()] = data;
+    closeModal('modal-free-comm'); renderAdminProjectCommsPage(); return;
+  }
+  await db.ref('commemorations').push(data);
+  closeModal('modal-free-comm'); renderAdminProjectCommsPage();
+  showToast('הפריט החופשי נוסף', 'success');
 }
 
 // ============================================================
@@ -1657,9 +2347,25 @@ function renderAdminSettingsPage() {
       <div class="card-title">⏱ תקופת תפיסה</div>
       <div class="form-group">
         <label>מספר ימים לשמירת תפיסה (ברירת מחדל: 3)</label>
-        <input class="form-control" type="number" id="setting-days" value="${appSettings.captureExpiryDays}" min="1" max="30" style="max-width:140px;">
+        <input class="form-control" type="number" id="setting-days" value="${appSettings.captureExpiryDays}" min="1" max="90" style="max-width:140px;">
       </div>
       <button class="btn btn-primary" onclick="saveDaysSetting()">שמור</button>
+    </div>
+    <div class="card">
+      <div class="card-title">📍 שלבי פרויקט</div>
+      <p style="color:var(--text-muted);font-size:13px;margin-bottom:12px;">הגדר את השלבים שיופיעו ברשימת הפרויקטים (תכנון, בניה, גימור, סיום...).</p>
+      <div id="stages-list">
+        ${appSettings.projectStages.map((s,i) => `
+          <div style="display:flex;align-items:center;gap:10px;margin-bottom:8px;">
+            <input class="form-control" value="${esc(s)}" id="stage-${i}" style="max-width:280px;">
+            <button class="btn btn-danger btn-sm" onclick="removeStage(${i})">🗑</button>
+          </div>`).join('')}
+      </div>
+      <div class="inline-form" style="margin-top:12px;">
+        <input class="form-control" id="new-stage" placeholder='שלב חדש, לדוגמה: "אכלוס"' style="max-width:280px;">
+        <button class="btn btn-ghost" onclick="addStage()">➕ הוסף</button>
+      </div>
+      <button class="btn btn-primary" style="margin-top:16px;" onclick="saveStages()">שמור שלבים</button>
     </div>
     <div class="card">
       <div class="card-title">📍 מקורות תרומה</div>
@@ -1676,6 +2382,26 @@ function renderAdminSettingsPage() {
       </div>
       <button class="btn btn-primary" style="margin-top:16px;" onclick="saveSources()">שמור מקורות</button>
     </div>`;
+}
+
+function addStage() {
+  const val = document.getElementById('new-stage').value.trim();
+  if (!val) return;
+  appSettings.projectStages.push(val);
+  renderAdminSettingsPage();
+}
+
+function removeStage(idx) {
+  appSettings.projectStages.splice(idx, 1);
+  renderAdminSettingsPage();
+}
+
+async function saveStages() {
+  const stages = [];
+  document.querySelectorAll('[id^="stage-"]').forEach(el => { if (el.value.trim()) stages.push(el.value.trim()); });
+  appSettings.projectStages = stages;
+  if (IS_CONFIGURED) await db.ref('settings/projectStages').set(stages);
+  showToast('שלבי הפרויקט נשמרו', 'success');
 }
 
 async function saveDaysSetting() {
@@ -1726,6 +2452,294 @@ function renderAboutPage() {
         מערכת זו פותחה כתרומה לעמותת <strong style="color:var(--primary);">טהרת המשפחה</strong><br>
         ונתרמה לזכרה ולעילוי נשמתה של אסתר בת שמחה ז״ל.
       </div>
+    </div>`;
+}
+
+// ============================================================
+//  SEARCH PAGE
+// ============================================================
+function renderSearchPage() {
+  setTopbar('חיפוש הנצחות', '');
+  const content = document.getElementById('page-content');
+
+  const typeOptions = Object.entries(allTypes)
+    .map(([id,t]) => `<option value="${id}">${esc(t.name)}</option>`)
+    .join('');
+
+  content.innerHTML = `
+    <div class="filters-bar" style="gap:14px;align-items:flex-end;flex-wrap:wrap;">
+      <div>
+        <div class="filter-label" style="margin-bottom:6px;">שם מקווה / פרויקט</div>
+        <input class="form-control" id="search-project-name"
+          placeholder="הקלד שם (חלקי)..."
+          style="min-width:200px;"
+          oninput="debounceSearch()">
+      </div>
+      <div>
+        <div class="filter-label" style="margin-bottom:6px;">סוג הנצחה</div>
+        <select class="filter-select" id="search-type" onchange="runSearch()">
+          <option value="">כל הסוגים</option>
+          ${typeOptions}
+        </select>
+      </div>
+      <button class="btn btn-primary" onclick="runSearch()">🔍 חפש</button>
+    </div>
+    <div id="search-results" style="margin-top:20px;">
+      <div class="empty-state">
+        <div class="empty-icon">🔍</div>
+        <h3>הזן מונח חיפוש</h3>
+        <p>חפש לפי שם מקווה או סנן לפי סוג הנצחה</p>
+      </div>
+    </div>`;
+}
+
+let _searchDebounce = null;
+function debounceSearch() {
+  clearTimeout(_searchDebounce);
+  _searchDebounce = setTimeout(runSearch, 350);
+}
+
+async function runSearch() {
+  const projectNameQuery = (document.getElementById('search-project-name')?.value || '').trim().toLowerCase();
+  const typeFilter = document.getElementById('search-type')?.value || '';
+  const resultsEl = document.getElementById('search-results');
+  if (!resultsEl) return;
+
+  if (!projectNameQuery && !typeFilter) {
+    resultsEl.innerHTML = `<div class="empty-state"><div class="empty-icon">🔍</div><h3>הזן מונח חיפוש</h3><p>חפש לפי שם מקווה או סנן לפי סוג הנצחה</p></div>`;
+    return;
+  }
+
+  resultsEl.innerHTML = `<div class="empty-state"><div class="empty-icon">⏳</div><h3>מחפש...</h3></div>`;
+
+  const isAdmin = currentUser.role === 'admin';
+
+  const matchingProjects = Object.entries(allProjects).filter(([,p]) => {
+    if (!isAdmin && !p.isActive) return false;
+    if (projectNameQuery && !p.name.toLowerCase().includes(projectNameQuery)) return false;
+    return true;
+  });
+
+  if (!matchingProjects.length && projectNameQuery) {
+    resultsEl.innerHTML = `<div class="empty-state"><div class="empty-icon">🔍</div><h3>לא נמצאו פרויקטים מתאימים</h3><p>נסה שם אחר</p></div>`;
+    return;
+  }
+
+  const matchingProjectIds = matchingProjects.length
+    ? new Set(matchingProjects.map(([id]) => id))
+    : new Set(Object.keys(allProjects).filter(id => isAdmin || allProjects[id].isActive));
+
+  let commsEntries = [];
+
+  if (!IS_CONFIGURED) {
+    commsEntries = Object.entries(allComms);
+  } else {
+    const snap = await db.ref('commemorations').once('value');
+    if (snap.exists()) snap.forEach(child => { commsEntries.push([child.key, child.val()]); });
+  }
+
+  let filtered = commsEntries.filter(([,c]) => {
+    if (!matchingProjectIds.has(c.projectId)) return false;
+    if (typeFilter && c.typeId !== typeFilter) return false;
+    return true;
+  });
+
+  if (!filtered.length) {
+    resultsEl.innerHTML = `<div class="empty-state"><div class="empty-icon">🔍</div><h3>לא נמצאו הנצחות</h3><p>נסה לשנות את הסינון</p></div>`;
+    return;
+  }
+
+  const statusOrder = { available: 0, captured: 1, sold: 2 };
+  filtered.sort((a, b) => {
+    const prioA = allProjects[a[1].projectId]?.priority || 3;
+    const prioB = allProjects[b[1].projectId]?.priority || 3;
+    if (prioA !== prioB) return prioA - prioB;
+    return (statusOrder[a[1].status] ?? 0) - (statusOrder[b[1].status] ?? 0);
+  });
+
+  resultsEl.innerHTML =
+    `<div style="margin-bottom:14px;font-size:14px;color:var(--text-muted);">נמצאו <strong style="color:var(--primary-dark);">${filtered.length}</strong> הנצחות</div>` +
+    filtered.map(([id,c]) => renderSearchResultCard(id,c)).join('');
+}
+
+function renderSearchResultCard(id, c) {
+  const project = allProjects[c.projectId];
+  if (!project) return '';
+  const type = allTypes[c.typeId]?.name || '';
+  const statusLabels = { available: 'פנויה', captured: 'תפוסה', sold: 'נמכרה' };
+  const badgeClasses = { available: 'badge-available', captured: 'badge-captured', sold: 'badge-sold' };
+  const priority = project.priority || 3;
+
+  let meta = '';
+  if (c.status === 'captured') {
+    meta = `<span>תפוס ע"י: <strong>${esc(c.capturedByName||'')}</strong></span>`;
+  } else if (c.status === 'sold') {
+    meta = `<span>תורם: <strong>${esc(c.donorName||'')}</strong></span>`;
+  }
+
+  return `
+    <div class="search-result-card">
+      <div class="search-result-project">
+        <span class="priority-badge priority-${priority}">${priority}</span>
+        <span>${esc(project.name)}</span>
+        <span class="tag ${project.isActive?'tag-success':'tag-warning'}" style="font-size:11px;">${project.isActive?'פעיל':'סגור'}</span>
+        <button class="btn btn-ghost btn-sm" style="margin-right:auto;font-size:12px;padding:4px 10px;" onclick="toggleMikvehPanel('${c.projectId}')">🕍 פרטים על המקווה</button>
+      </div>
+      <div class="mikveh-panel-slot" data-project-id="${c.projectId}" style="display:none;"></div>
+      <div class="search-result-name">${esc(c.name)}</div>
+      <div class="search-result-meta">
+        <span class="tag ${badgeClasses[c.status]||''}" style="font-size:11px;">${statusLabels[c.status]||''}</span>
+        <span>${esc(type)}</span>
+        <span>·</span>
+        <span style="color:var(--accent);font-weight:700;">₪${(c.price||0).toLocaleString()}</span>
+        ${meta}
+      </div>
+    </div>`;
+}
+
+async function toggleMikvehPanel(projectId) {
+  const panelDivs = document.querySelectorAll(`.mikveh-panel-slot[data-project-id="${projectId}"]`);
+  if (!panelDivs.length) return;
+
+  const isVisible = panelDivs[0].style.display !== 'none';
+  if (isVisible) {
+    panelDivs.forEach(el => { el.style.display = 'none'; el.innerHTML = ''; });
+    return;
+  }
+
+  let totalComms = 0, soldComms = 0;
+  if (!IS_CONFIGURED) {
+    const projectComms = Object.values(allComms).filter(c => c.projectId === projectId);
+    totalComms = projectComms.length;
+    soldComms = projectComms.filter(c => c.status === 'sold').length;
+  } else {
+    const snap = await db.ref('commemorations').orderByChild('projectId').equalTo(projectId).once('value');
+    if (snap.exists()) snap.forEach(child => { totalComms++; if (child.val().status === 'sold') soldComms++; });
+  }
+
+  const project = allProjects[projectId];
+  const priority = project.priority || 3;
+
+  const panelHtml = `
+    <div class="mikveh-panel">
+      <div class="mikveh-panel-title">🕍 פרטי המקווה</div>
+      <div class="info-row"><span class="info-label">שם:</span><span><strong>${esc(project.name)}</strong></span></div>
+      ${project.notes ? `<div class="info-row"><span class="info-label">הערות:</span><span>${esc(project.notes)}</span></div>` : ''}
+      <div class="info-row"><span class="info-label">סטאטוס:</span><span class="tag ${project.isActive?'tag-success':'tag-warning'}">${project.isActive?'פעיל':'סגור'}</span></div>
+      <div class="info-row"><span class="info-label">עדיפות:</span><span class="priority-badge priority-${priority}">${priority}</span></div>
+      <div class="info-row"><span class="info-label">הנצחות:</span><span><strong>${soldComms}</strong> נמכרו מתוך <strong>${totalComms}</strong></span></div>
+    </div>`;
+
+  panelDivs.forEach(el => { el.innerHTML = panelHtml; el.style.display = 'block'; });
+}
+
+// ============================================================
+//  ADMIN: EXPIRED CAPTURES
+// ============================================================
+async function getExpiredComms() {
+  let items = [];
+  if (IS_CONFIGURED) {
+    const snap = await db.ref('commemorations').orderByChild('status').equalTo('captured').once('value');
+    if (snap.exists()) snap.forEach(child => {
+      const d = child.val();
+      if (d.captureExpiredAt) items.push({ id: child.key, ...d });
+    });
+    await loadProjects();
+  } else {
+    Object.entries(allComms).forEach(([id, c]) => {
+      if (c.status === 'captured' && c.captureExpiredAt) items.push({ id, ...c });
+    });
+  }
+  return items;
+}
+
+async function openExpiredCapturesModal() {
+  if (currentUser.role !== 'admin') return;
+  const items = await getExpiredComms();
+  updateExpiredBadge(items.length);
+  if (!items.length) return;
+
+  const rows = items.map(c => {
+    const project = allProjects[c.projectId];
+    const daysPassed = Math.floor((Date.now() - c.capturedAt) / 86400000);
+    return `<div style="background:var(--bg);border-radius:10px;padding:14px;margin-bottom:10px;border:1px solid var(--border);">
+      <div style="font-weight:700;color:var(--primary-dark);margin-bottom:4px;">${esc(c.name)}</div>
+      <div style="font-size:12px;color:var(--text-muted);margin-bottom:8px;">
+        פרויקט: ${esc(project?.name||'?')} &nbsp;·&nbsp; תפוס ע"י: ${esc(c.capturedByName||'')}
+        ${c.capturedDonorName ? ` &nbsp;·&nbsp; תורם: ${esc(c.capturedDonorName)}` : ''}
+        &nbsp;·&nbsp; לפני ${daysPassed} ימים
+      </div>
+      <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
+        <button class="btn btn-danger btn-sm" onclick="handleExpiredCapture('${c.id}','release');this.closest('div[style]').remove();">🔓 שחרר</button>
+        <input type="number" id="ext-days-popup-${c.id}" min="1" max="90" value="${appSettings.captureExpiryDays}"
+          style="width:70px;padding:6px 10px;border:2px solid var(--border);border-radius:8px;font-size:13px;">
+        <button class="btn btn-primary btn-sm" onclick="handleExpiredCapture('${c.id}','extend',parseInt(document.getElementById('ext-days-popup-${c.id}').value)||${appSettings.captureExpiryDays});this.closest('div[style]').remove();">⏱ המשך תפיסה</button>
+      </div>
+    </div>`;
+  }).join('');
+
+  document.getElementById('expired-list').innerHTML = rows;
+  openModal('modal-expired-captures');
+}
+
+function updateExpiredBadge(count) {
+  const badge = document.getElementById('nav-expired-badge');
+  const navItem = document.getElementById('nav-expired');
+  if (!badge || !navItem) return;
+  if (count > 0) {
+    badge.textContent = count;
+    badge.style.display = 'inline-block';
+    navItem.style.color = 'white';
+  } else {
+    badge.style.display = 'none';
+  }
+}
+
+async function renderAdminExpiredPage() {
+  setTopbar('לטיפול — תפיסות שפג תוקפן', '');
+  const content = document.getElementById('page-content');
+  content.innerHTML = '<div class="empty-state"><div class="empty-icon">⏳</div><h3>טוען...</h3></div>';
+
+  const items = await getExpiredComms();
+  updateExpiredBadge(items.length);
+
+  if (!items.length) {
+    content.innerHTML = '<div class="empty-state"><div class="empty-icon">✅</div><h3>אין פריטים לטיפול</h3><p>כל התפיסות תקינות</p></div>';
+    return;
+  }
+
+  const rows = items.map(c => {
+    const project = allProjects[c.projectId];
+    const daysPassed = Math.floor((Date.now() - c.capturedAt) / 86400000);
+    const expiredDays = Math.floor((Date.now() - c.captureExpiredAt) / 86400000);
+    return `<tr>
+      <td><strong>${esc(c.name)}</strong></td>
+      <td>${esc(project?.name||'?')}</td>
+      <td>${esc(c.capturedByName||'')}</td>
+      <td>${esc(c.capturedDonorName||'-')}</td>
+      <td>${esc(c.captureFundraiserName||'-')}</td>
+      <td style="color:var(--danger);font-weight:600;">${daysPassed} ימים</td>
+      <td style="color:var(--warning);font-weight:600;">${expiredDays} ימים</td>
+      <td>
+        <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;">
+          <button class="btn btn-danger btn-sm" onclick="handleExpiredCapture('${c.id}','release')">🔓 שחרר</button>
+          <input type="number" id="ext-days-${c.id}" min="1" max="90" value="${appSettings.captureExpiryDays}"
+            style="width:62px;padding:5px 8px;border:2px solid var(--border);border-radius:8px;font-size:13px;">
+          <button class="btn btn-primary btn-sm" onclick="handleExpiredCapture('${c.id}','extend',parseInt(document.getElementById('ext-days-${c.id}').value)||${appSettings.captureExpiryDays})">⏱ המשך</button>
+        </div>
+      </td>
+    </tr>`;
+  }).join('');
+
+  content.innerHTML = `
+    <div style="background:#FFF3E0;border:2px solid var(--warning);border-radius:10px;padding:14px 18px;margin-bottom:20px;font-size:14px;color:#E65100;">
+      ⚠️ ${items.length} פריטים ממתינים להחלטה — שחרור או המשך תפיסה.
+    </div>
+    <div class="table-wrap">
+      <table class="data-table">
+        <thead><tr><th>הנצחה</th><th>פרויקט</th><th>תפוס ע"י</th><th>שם תורם</th><th>שם מתרים</th><th>ימים בתפיסה</th><th>ימים מאז פקיעה</th><th>פעולה</th></tr></thead>
+        <tbody>${rows}</tbody>
+      </table>
     </div>`;
 }
 
