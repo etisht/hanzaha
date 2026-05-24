@@ -486,9 +486,6 @@
         <div class="nav-item" onclick="showPage('search')" data-page="search-admin">
           <span class="nav-icon">🔍</span> חיפוש הנצחות
         </div>
-        <div class="nav-item" onclick="showPage('all-comms')" data-page="all-comms">
-          <span class="nav-icon">📊</span> כל ההנצחות
-        </div>
         <div class="nav-item" onclick="showPage('capture-history')" data-page="capture-history">
           <span class="nav-icon">📜</span> היסטוריית תפיסות
         </div>
@@ -1129,8 +1126,18 @@ async function renderProjectsPage() {
 
   content.innerHTML = html;
 
-  if (IS_CONFIGURED) entries.forEach(([id]) => loadProjectStats(id));
-  else entries.forEach(([id]) => updateProjectStats(id, Object.values(allComms).filter(c => c.projectId === id)));
+  if (IS_CONFIGURED) {
+    // Fetch all commemorations in one query to avoid multiple Firebase calls and index issues
+    db.ref('commemorations').once('value').then(snap => {
+      const allCommsList = [];
+      if (snap.exists()) snap.forEach(c => allCommsList.push(c.val()));
+      entries.forEach(([id]) => {
+        updateProjectStats(id, allCommsList.filter(c => c.projectId === id));
+      });
+    });
+  } else {
+    entries.forEach(([id]) => updateProjectStats(id, Object.values(allComms).filter(c => c.projectId === id)));
+  }
 }
 
 function renderSetupBanner() {
@@ -1372,6 +1379,7 @@ async function confirmCapture() {
     allComms[commId] = { ...c, status: 'captured', capturedBy: currentUser.uid, capturedByName: currentUser.displayName, capturedAt: Date.now(), captureExpiry, capturedDonorName, captureFundraiserName, captureNote, captureExpiredAt: null };
     renderCommsGrid(); renderCommsStats();
     showToast('ההנצחה נתפסה בהצלחה! ✋', 'success');
+    if (currentPage === 'search') runSearch();
     return;
   }
 
@@ -1391,6 +1399,7 @@ async function confirmCapture() {
         capturedAt, captureExpiry, releasedAt: null, releaseReason: null
       });
       showToast('ההנצחה נתפסה בהצלחה! ✋', 'success');
+      if (currentPage === 'search') runSearch();
     } else {
       showToast('ההנצחה כבר נתפסה על ידי משתמש אחר', 'error');
     }
@@ -1409,12 +1418,14 @@ async function releaseCapture(commId) {
     allComms[commId] = { ...c, status: 'available', capturedBy: null, capturedByName: null, capturedAt: null, captureExpiry: null };
     renderCommsGrid(); renderCommsStats();
     showToast('התפיסה שוחררה', 'success');
+    if (currentPage === 'search') runSearch();
     return;
   }
   const releasedAt = Date.now();
   await db.ref(`commemorations/${commId}`).update({ status: 'available', capturedBy: null, capturedByName: null, capturedAt: null, captureExpiry: null });
   await updateCaptureLogRelease(commId, releasedAt, 'manual');
   showToast('התפיסה שוחררה', 'success');
+  if (currentPage === 'search') runSearch();
 }
 
 async function updateCaptureLogRelease(commId, releasedAt, reason) {
@@ -1489,6 +1500,7 @@ async function confirmSell() {
     closeModal('modal-sell');
     renderCommsGrid(); renderCommsStats();
     showToast('ההנצחה נמכרה בהצלחה! 🎉', 'success');
+    if (currentPage === 'search') runSearch();
     return;
   }
 
@@ -1504,6 +1516,7 @@ async function confirmSell() {
     closeModal('modal-sell');
     pendingSellId = null;
     showToast('ההנצחה נמכרה בהצלחה! 🎉', 'success');
+    if (currentPage === 'search') runSearch();
   } catch(e) {
     errEl.textContent = 'שגיאה: ' + e.message; errEl.style.display = 'block';
   }
@@ -1625,19 +1638,24 @@ async function adminUpdateCommChecklist(commId, field, value) {
 async function uploadCommImage(commId, input) {
   const file = input.files[0];
   if (!file) return;
-  if (file.size > 5 * 1024 * 1024) { showToast('הקובץ גדול מדי (מקסימום 5MB)', 'error'); return; }
-  if (!IS_CONFIGURED || !storage) { showToast('העלאת תמונה דורשת Firebase Storage מוגדר', 'warning'); return; }
-  showToast('מעלה תמונה...', '');
+  if (file.size > 3 * 1024 * 1024) { showToast('הקובץ גדול מדי (מקסימום 3MB)', 'error'); return; }
+  showToast('שומר תמונה...', '');
   try {
-    const ref = storage.ref(`commemorations/${commId}/image`);
-    await ref.put(file);
-    const url = await ref.getDownloadURL();
-    await db.ref(`commemorations/${commId}`).update({ imageUrl: url });
-    if (allComms[commId]) allComms[commId].imageUrl = url;
-    showToast('התמונה הועלתה בהצלחה', 'success');
+    // Convert to base64 data URL and store in Firebase RTDB (avoids Storage config/CORS issues)
+    const base64url = await new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = e => resolve(e.target.result);
+      reader.onerror = reject;
+      reader.readAsDataURL(file);
+    });
+    if (IS_CONFIGURED) {
+      await db.ref(`commemorations/${commId}`).update({ imageUrl: base64url });
+    }
+    if (allComms[commId]) allComms[commId].imageUrl = base64url;
+    showToast('התמונה נשמרה בהצלחה ✅', 'success');
     openCommDetail(commId);
   } catch(e) {
-    showToast('שגיאה בהעלאת תמונה: ' + e.message, 'error');
+    showToast('שגיאה בשמירת תמונה: ' + e.message, 'error');
   }
 }
 
@@ -1947,6 +1965,8 @@ async function renderAdminProjectCommsPage() {
 
   let comms = {};
   if (IS_CONFIGURED) {
+    // Clear current project's stale comms from allComms before reloading
+    Object.keys(allComms).forEach(key => { if (allComms[key].projectId === currentProjectId) delete allComms[key]; });
     const snap = await db.ref('commemorations').orderByChild('projectId').equalTo(currentProjectId).once('value');
     if (snap.exists()) snap.forEach(c => { comms[c.key] = c.val(); allComms[c.key] = c.val(); });
   } else {
@@ -2127,6 +2147,7 @@ async function deleteComm(commId) {
   if (!confirm('למחוק הנצחה זו לצמיתות?')) return;
   if (!IS_CONFIGURED) { delete allComms[commId]; renderAdminProjectCommsPage(); return; }
   await db.ref(`commemorations/${commId}`).remove();
+  delete allComms[commId];
   renderAdminProjectCommsPage();
   showToast('ההנצחה נמחקה', 'success');
 }
@@ -2535,7 +2556,10 @@ async function runSearch() {
     commsEntries = Object.entries(allComms);
   } else {
     const snap = await db.ref('commemorations').once('value');
-    if (snap.exists()) snap.forEach(child => { commsEntries.push([child.key, child.val()]); });
+    if (snap.exists()) snap.forEach(child => {
+      commsEntries.push([child.key, child.val()]);
+      allComms[child.key] = child.val(); // store in allComms so openCapture/openSell work
+    });
   }
 
   let filtered = commsEntries.filter(([,c]) => {
@@ -2565,16 +2589,39 @@ async function runSearch() {
 function renderSearchResultCard(id, c) {
   const project = allProjects[c.projectId];
   if (!project) return '';
-  const type = allTypes[c.typeId]?.name || '';
+  const type = allTypes[c.typeId]?.name || (c.isWholeProject ? 'כל הפרויקט' : (c.isFreeItem ? 'פריט חופשי' : ''));
   const statusLabels = { available: 'פנויה', captured: 'תפוסה', sold: 'נמכרה' };
   const badgeClasses = { available: 'badge-available', captured: 'badge-captured', sold: 'badge-sold' };
   const priority = project.priority || 3;
+  const isMine = c.capturedBy === currentUser.uid;
+  const isProjectActive = project.isActive;
+
+  // Check if this comm is blocked by a whole-project capture/sale
+  const isBlocked = !c.isWholeProject && c.status === 'available' &&
+    Object.values(allComms).some(w => w.projectId === c.projectId && w.isWholeProject && (w.status === 'captured' || w.status === 'sold'));
 
   let meta = '';
   if (c.status === 'captured') {
-    meta = `<span>תפוס ע"י: <strong>${esc(c.capturedByName||'')}</strong></span>`;
+    const expiryStr = c.captureExpiry ? formatDate(c.captureExpiry) : '';
+    meta = `<span>תפוס ע"י: <strong>${esc(c.capturedByName||'')}</strong>${expiryStr ? ` · פקיעה: ${expiryStr}` : ''}</span>`;
   } else if (c.status === 'sold') {
     meta = `<span>תורם: <strong>${esc(c.donorName||'')}</strong></span>`;
+  } else if (isBlocked) {
+    meta = `<span style="color:var(--text-muted);">חסומה — "כל הפרויקט" תפוס</span>`;
+  }
+
+  let actions = '';
+  if (isProjectActive && !isBlocked) {
+    if (c.status === 'available') {
+      actions = `<div class="comm-actions" style="margin-top:10px;">
+        <button class="btn btn-primary btn-sm" onclick="openCapture('${id}')">✋ תפוס</button>
+      </div>`;
+    } else if (c.status === 'captured' && isMine) {
+      actions = `<div class="comm-actions" style="margin-top:10px;">
+        <button class="btn btn-accent btn-sm" onclick="openSell('${id}')">💰 מכור</button>
+        <button class="btn btn-ghost btn-sm" onclick="releaseCapture('${id}')">↩ שחרר</button>
+      </div>`;
+    }
   }
 
   return `
@@ -2588,12 +2635,13 @@ function renderSearchResultCard(id, c) {
       <div class="mikveh-panel-slot" data-project-id="${c.projectId}" style="display:none;"></div>
       <div class="search-result-name">${esc(c.name)}</div>
       <div class="search-result-meta">
-        <span class="tag ${badgeClasses[c.status]||''}" style="font-size:11px;">${statusLabels[c.status]||''}</span>
+        <span class="tag ${isBlocked ? 'badge-sold' : (badgeClasses[c.status]||'')}" style="font-size:11px;">${isBlocked ? '🔒 חסומה' : (statusLabels[c.status]||'')}</span>
         <span>${esc(type)}</span>
         <span>·</span>
         <span style="color:var(--accent);font-weight:700;">₪${(c.price||0).toLocaleString()}</span>
         ${meta}
       </div>
+      ${actions}
     </div>`;
 }
 
