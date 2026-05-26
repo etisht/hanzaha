@@ -2935,11 +2935,11 @@ function renderSearchPage() {
     </div>
     <div id="search-results" style="margin-top:20px;">
       <div class="empty-state">
-        <div class="empty-icon">🔍</div>
-        <h3>הזן מונח חיפוש</h3>
-        <p>חפש לפי שם מקווה או סנן לפי סוג הנצחה</p>
+        <div class="empty-icon">⏳</div>
+        <h3>טוען...</h3>
       </div>
     </div>`;
+  runSearch();
 }
 
 let _searchDebounce = null;
@@ -2954,10 +2954,7 @@ async function runSearch() {
   const resultsEl = document.getElementById('search-results');
   if (!resultsEl) return;
 
-  if (!projectNameQuery && !typeFilter) {
-    resultsEl.innerHTML = `<div class="empty-state"><div class="empty-icon">🔍</div><h3>הזן מונח חיפוש</h3><p>חפש לפי שם מקווה או סנן לפי סוג הנצחה</p></div>`;
-    return;
-  }
+  // אם אין סינון — מציג את כל הפנויות
 
   resultsEl.innerHTML = `<div class="empty-state"><div class="empty-icon">⏳</div><h3>מחפש...</h3></div>`;
 
