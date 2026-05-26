@@ -3328,70 +3328,55 @@ async function runSearch() {
     `</div>`;
 }
 
-function renderSearchResultCard(id, c) {
+function renderSearchCommCard(id, c) {
   const project = allProjects[c.projectId];
   if (!project) return '';
   const type = allTypes[c.typeId]?.name || (c.isWholeProject ? 'כל הפרויקט' : (c.isFreeItem ? 'פריט חופשי' : ''));
-  const statusLabels = { available: 'פנויה', captured: 'תפוסה', sold: 'נמכרה' };
   const badgeClasses = { available: 'badge-available', captured: 'badge-captured', sold: 'badge-sold' };
   const priority = project.priority || 3;
   const isMine = c.capturedBy === currentUser.uid;
-  const isProjectActive = project.isActive;
   const pStatus = getProjectStatus(project);
   const isCompletion = pStatus === 'completion';
+  const isProjectActive = pStatus === 'active' || pStatus === 'completion';
 
-  // Check if this comm is blocked by a whole-project capture/sale
   const isBlocked = !c.isWholeProject && c.status === 'available' &&
     Object.values(allComms).some(w => w.projectId === c.projectId && w.isWholeProject && (w.status === 'captured' || w.status === 'sold'));
 
-  let meta = '';
-  if (c.status === 'captured') {
-    const expiryStr = c.captureExpiry ? formatDate(c.captureExpiry) : '';
-    meta = `<span>תפוס ע"י: <strong>${esc(c.capturedByName||'')}</strong>${expiryStr ? ` · פקיעה: ${expiryStr}` : ''}</span>`;
-  } else if (c.status === 'sold') {
-    meta = `<span>תורם: <strong>${esc(c.donorName||'')}</strong></span>`;
-  } else if (isBlocked) {
-    meta = `<span style="color:var(--text-muted);">חסומה — "כל הפרויקט" תפוס</span>`;
-  }
+  const isCompletionAvailable = c.status === 'available' && !isBlocked && isCompletion;
+  const cardClass = isBlocked ? 'status-blocked' : (isCompletionAvailable ? 'status-available-completion' : `status-${c.status}`);
+  const badgeClass = isBlocked ? 'badge-sold' : (isCompletionAvailable ? 'badge-completion' : (badgeClasses[c.status]||''));
+  const badgeLabel = isBlocked ? '🔒 חסומה' : (isCompletionAvailable ? '🔵 להשלמה' : { available: 'פנויה', captured: 'תפוסה', sold: 'נמכרה' }[c.status]);
+  const cardStyleAttr = isBlocked ? ' style="opacity:0.55;border-color:#ccc;"' : '';
+
+  const wholeProjectBadge = c.isWholeProject
+    ? '<span style="font-size:10px;background:#FFF3E0;color:#E65100;border-radius:4px;padding:1px 5px;font-weight:600;margin-bottom:2px;display:inline-block;">⭐ כל הפרויקט</span><br>'
+    : (c.isFreeItem ? '<span style="font-size:10px;background:rgba(107,76,139,0.12);color:var(--primary);border-radius:4px;padding:1px 5px;font-weight:600;margin-bottom:2px;display:inline-block;">✏️ חופשי</span><br>' : '');
 
   let actions = '';
   if (isProjectActive && !isBlocked) {
     if (c.status === 'available') {
-      actions = `<div class="comm-actions" style="margin-top:10px;">
-        <button class="btn btn-primary btn-sm" onclick="openCapture('${id}')">✋ תפוס</button>
-        <button class="btn btn-accent btn-sm" onclick="openDirectSell('${id}')">💰 מכור</button>
+      actions = `<div class="comm-actions">
+        <button class="btn btn-primary btn-sm" onclick="event.stopPropagation();openCapture('${id}')" style="flex:1;">✋ תפוס</button>
+        <button class="btn btn-accent btn-sm" onclick="event.stopPropagation();openDirectSell('${id}')" style="flex:1;">💰 מכור</button>
       </div>`;
     } else if (c.status === 'captured' && isMine) {
-      actions = `<div class="comm-actions" style="margin-top:10px;">
-        <button class="btn btn-accent btn-sm" onclick="openSell('${id}')">💰 מכור</button>
-        <button class="btn btn-ghost btn-sm" onclick="releaseCapture('${id}')">↩ שחרר</button>
+      actions = `<div class="comm-actions">
+        <button class="btn btn-accent btn-sm" onclick="event.stopPropagation();openSell('${id}')">💰 מכור</button>
+        <button class="btn btn-ghost btn-sm" onclick="event.stopPropagation();releaseCapture('${id}')">↩</button>
       </div>`;
     }
   }
 
-  const cardStyle = isCompletion ? ' border-color:#42A5F5; background:#E3F2FD;' : '';
-  const statusTagText = isCompletion ? 'להשלמה' : (project.isActive ? 'פעיל' : 'סגור');
-  const statusTagClass = isCompletion ? 'tag-completion' : (project.isActive ? 'tag-success' : 'tag-warning');
-
-  return `
-    <div class="search-result-card" style="${cardStyle}">
-      <div class="search-result-project">
-        <span class="priority-badge priority-${priority}">${priority}</span>
-        <span>${esc(project.name)}</span>
-        <span class="tag ${statusTagClass}" style="font-size:11px;">${isCompletion ? '🔵 ' : ''}${statusTagText}</span>
-        <button class="btn btn-ghost btn-sm" style="margin-right:auto;font-size:12px;padding:4px 10px;" onclick="toggleMikvehPanel('${c.projectId}')">🕍 פרטים על המקווה</button>
-      </div>
-      <div class="mikveh-panel-slot" data-project-id="${c.projectId}" style="display:none;"></div>
-      <div class="search-result-name">${esc(c.name)}</div>
-      <div class="search-result-meta">
-        <span class="tag ${isBlocked ? 'badge-sold' : (isCompletion && c.status === 'available' ? 'badge-completion' : (badgeClasses[c.status]||''))}" style="font-size:11px;">${isBlocked ? '🔒 חסומה' : (statusLabels[c.status]||'')}</span>
-        <span>${esc(type)}</span>
-        <span>·</span>
-        <span style="color:var(--accent);font-weight:700;">₪${(c.price||0).toLocaleString()}</span>
-        ${meta}
-      </div>
-      ${actions}
-    </div>`;
+  return `<div class="comm-card ${cardClass}"${cardStyleAttr} onclick="openCommDetail('${id}')">
+    <span class="comm-status-badge ${badgeClass}">${badgeLabel}</span>
+    <div style="font-size:10px;color:var(--text-muted);margin-bottom:3px;line-height:1.3;padding-left:50px;">
+      <span class="priority-badge priority-${priority}" style="font-size:9px;padding:1px 4px;margin-left:3px;">${priority}</span>${esc(project.name)}
+    </div>
+    <div class="comm-card-name" style="padding-left:0;">${wholeProjectBadge}${esc(c.name)}</div>
+    <div class="comm-card-type">${esc(type)}</div>
+    <div class="comm-card-price">₪${(c.price||0).toLocaleString()}</div>
+    ${actions}
+  </div>`;
 }
 
 async function toggleMikvehPanel(projectId) {
