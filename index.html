@@ -2076,6 +2076,9 @@ async function renderSignsPage() {
     comms = Object.assign({}, allComms);
   }
 
+  // Populate allComms so openCommDetail works from signs page
+  Object.assign(allComms, comms);
+
   // Only sold commemorations
   const soldComms = Object.entries(comms).filter(([,c]) => c.status === 'sold');
 
@@ -2083,13 +2086,25 @@ async function renderSignsPage() {
     .map(([id,p]) => `<option value="${id}">${esc(p.name)}</option>`)
     .join('');
 
-  function renderSignsTable(filterProjectId) {
-    const items = soldComms.filter(([,c]) => !filterProjectId || c.projectId === filterProjectId);
-    if (!items.length) return '<div class="empty-state"><div class="empty-icon">🪧</div><h3>אין הנצחות נמכרות</h3></div>';
+  function getFilteredItems() {
+    const filterProject = document.getElementById('signs-project-filter')?.value || '';
+    const filterStatus  = document.getElementById('signs-status-filter')?.value  || '';
+    return soldComms.filter(([,c]) => {
+      if (filterProject && c.projectId !== filterProject) return false;
+      if (filterStatus === 'no-approval' &&  c.approvalChecked) return false;
+      if (filterStatus === 'no-print'    &&  c.signPrinted)     return false;
+      if (filterStatus === 'no-hang'     &&  c.signHung)        return false;
+      return true;
+    });
+  }
+
+  function renderSignsTable() {
+    const items = getFilteredItems();
+    if (!items.length) return '<div class="empty-state"><div class="empty-icon">🪧</div><h3>אין הנצחות בפילטר זה</h3></div>';
 
     const countApproved = items.filter(([,c]) => c.approvalChecked).length;
-    const countPrinted = items.filter(([,c]) => c.signPrinted).length;
-    const countHung = items.filter(([,c]) => c.signHung).length;
+    const countPrinted  = items.filter(([,c]) => c.signPrinted).length;
+    const countHung     = items.filter(([,c]) => c.signHung).length;
 
     const statsHtml = `<div class="stats-row" style="margin-bottom:16px;">
       <div class="stat-chip"><span class="stat-icon">📋</span><div><div class="stat-num">${items.length}</div><div class="stat-lbl">סה"כ הנצחות</div></div></div>
@@ -2103,23 +2118,32 @@ async function renderSignsPage() {
       const chk = (field, label, disabled) => {
         const isChecked = !!c[field];
         const disAttr = disabled ? 'disabled' : '';
-        return `<td style="text-align:center;">
+        return `<td style="text-align:center;" onclick="event.stopPropagation()">
           <input type="checkbox" ${isChecked ? 'checked' : ''} ${disAttr}
             style="width:18px;height:18px;accent-color:var(--primary);cursor:${disabled?'not-allowed':'pointer'};"
-            onchange="signsUpdateField('${id}','${field}',this.checked)" title="${label}">
+            onchange="signsUpdateField('${id}','${field}',this.checked,true)" title="${label}">
         </td>`;
       };
       const notApproved = !c.approvalChecked;
-      const notPrinted = !c.signPrinted;
-      return `<tr style="${c.signHung ? 'background:#F0FBF0;' : ''}">
-        <td><strong>${esc(c.name)}</strong></td>
+      const notPrinted  = !c.signPrinted;
+      const imgIcon = c.imageUrl
+        ? `<span title="יש קובץ מצורף — לחץ לצפייה" style="cursor:pointer;font-size:15px;margin-right:5px;vertical-align:middle;" onclick="event.stopPropagation();signsViewImage('${id}')">🖼️</span>`
+        : '';
+      const hungTag = c.signHung ? '<span style="font-size:10px;background:#E8F5E9;color:#2E7D32;border-radius:4px;padding:1px 5px;margin-right:4px;">✓ תלוי</span>' : '';
+      return `<tr style="${c.signHung ? 'background:#F0FBF0;' : ''}cursor:pointer;" title="לחץ לפרטים מלאים" onclick="signsOpenDetail('${id}')">
+        <td>
+          <strong style="color:var(--primary);">${esc(c.name)}</strong>
+          ${imgIcon}${hungTag}
+        </td>
         <td style="font-size:12px;">${esc(proj?.name||'')}</td>
-        <td style="font-size:12px;">${esc(c.donorName||'-')}</td>
+        <td style="font-size:13px;"><strong>${esc(c.donorName||'-')}</strong>
+          ${c.donorPhone ? `<div style="font-size:11px;color:var(--text-muted);">${esc(c.donorPhone)}</div>` : ''}
+        </td>
         <td style="font-size:12px;">${esc(c.commemorationNames||'-')}</td>
         ${chk('approvalChecked','אישור הנצחה', false)}
         ${chk('signPrinted','הדפסת שלט', notApproved)}
         ${chk('signHung','תליית שלט', notPrinted)}
-        <td style="font-size:12px;">${esc(c.saleNotes||'-')}</td>
+        <td style="font-size:12px;" onclick="event.stopPropagation()">${esc(c.saleNotes||'-')}</td>
       </tr>`;
     }).join('');
 
@@ -2138,35 +2162,102 @@ async function renderSignsPage() {
   }
 
   content.innerHTML = `
-    <div class="filters-bar" style="margin-bottom:20px;">
-      <span class="filter-label">סינון לפי מקווה:</span>
+    <div class="filters-bar" style="margin-bottom:20px;flex-wrap:wrap;gap:12px;align-items:center;">
+      <span class="filter-label">מקווה:</span>
       <select class="filter-select" id="signs-project-filter" onchange="signsApplyFilter()">
         <option value="">כל המקוואות</option>
         ${projectOptions}
       </select>
+      <span class="filter-label">סינון:</span>
+      <select class="filter-select" id="signs-status-filter" onchange="signsApplyFilter()">
+        <option value="">הכל</option>
+        <option value="no-approval">❌ אין אישור</option>
+        <option value="no-print">❌ אין הדפסה</option>
+        <option value="no-hang">❌ אין תליה</option>
+      </select>
+      <button class="btn btn-accent btn-sm" onclick="signsExportFiltered()" style="margin-right:auto;">📥 ייצוא לפי פילטר</button>
     </div>
-    <div id="signs-table-container">${renderSignsTable('')}</div>`;
+    <div id="signs-table-container">${renderSignsTable()}</div>`;
 
   window._signsComms = comms;
   window._renderSignsTable = renderSignsTable;
+  window._getFilteredSignsItems = getFilteredItems;
 }
 
 function signsApplyFilter() {
-  const val = document.getElementById('signs-project-filter')?.value || '';
   const container = document.getElementById('signs-table-container');
-  if (container && window._renderSignsTable) container.innerHTML = window._renderSignsTable(val);
+  if (container && window._renderSignsTable) container.innerHTML = window._renderSignsTable();
 }
 
-async function signsUpdateField(commId, field, value) {
+function signsOpenDetail(commId) {
+  if (window._signsComms && window._signsComms[commId]) {
+    allComms[commId] = window._signsComms[commId];
+  }
+  openCommDetail(commId);
+}
+
+function signsViewImage(commId) {
+  const c = (window._signsComms || {})[commId] || allComms[commId];
+  if (!c || !c.imageUrl) { showToast('אין קובץ מצורף', 'error'); return; }
+  const overlay = document.createElement('div');
+  overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.82);z-index:999;display:flex;align-items:center;justify-content:center;cursor:zoom-out;';
+  overlay.innerHTML = `<img src="${esc(c.imageUrl)}" style="max-width:90vw;max-height:90vh;border-radius:12px;box-shadow:0 8px 40px rgba(0,0,0,0.6);" alt="תמונת הנצחה">
+    <div style="position:absolute;top:18px;left:18px;background:white;border-radius:8px;padding:6px 14px;font-size:13px;font-weight:700;color:var(--primary-dark);cursor:pointer;" onclick="event.stopPropagation();this.parentElement.remove()">✕ סגור</div>`;
+  overlay.addEventListener('click', () => overlay.remove());
+  document.body.appendChild(overlay);
+}
+
+async function signsExportFiltered() {
+  if (typeof XLSX === 'undefined') { showToast('ספריית Excel לא נטענה', 'error'); return; }
+  const items = window._getFilteredSignsItems ? window._getFilteredSignsItems() : [];
+  if (!items.length) { showToast('אין נתונים לייצוא בפילטר הנוכחי', 'warning'); return; }
+  const rows = items.map(([,c]) => {
+    const proj = allProjects[c.projectId];
+    return {
+      'פרויקט':              proj?.name || '',
+      'שם הנצחה':           c.name || '',
+      'סוג':                 (allTypes[c.typeId]?.name) || '',
+      'מחיר':                c.price || 0,
+      'שם תורם':            c.donorName || '',
+      'טלפון':               c.donorPhone || '',
+      'מייל':                c.donorEmail || '',
+      'מספר תורם':          c.donorNumber || '',
+      'שם מתרים':           c.fundraiserName || '',
+      'תת קטגוריה מתרים':  c.fundraiserSubCategory || '',
+      'נוסח הנצחה':         c.commemorationNames || '',
+      'מקור תרומה':         c.donationSource || '',
+      'אמצעי תשלום':        c.paymentMethod || '',
+      'מספר קבלה':          c.donationNumber || '',
+      'אישור הנצחה':        c.approvalChecked ? 'כן' : 'לא',
+      'הדפסת שלט':          c.signPrinted ? 'כן' : 'לא',
+      'תליית שלט':          c.signHung ? 'כן' : 'לא',
+      'הערות מכירה':        c.saleNotes || '',
+      'נמכר ע"י':           c.soldByName || '',
+      'תאריך מכירה':        c.soldAt ? new Date(c.soldAt).toLocaleDateString('he-IL') : ''
+    };
+  });
+  const ws = XLSX.utils.json_to_sheet(rows);
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, 'שלטים');
+  const projFilter  = document.getElementById('signs-project-filter')?.value;
+  const statFilter  = document.getElementById('signs-status-filter')?.value;
+  const projName    = projFilter ? (allProjects[projFilter]?.name?.replace(/[:\\/\?\*\[\]]/g,'') || 'פרויקט') : 'כל_המקוואות';
+  const statSuffix  = statFilter === 'no-approval' ? '_ללא_אישור' : statFilter === 'no-print' ? '_ללא_הדפסה' : statFilter === 'no-hang' ? '_ללא_תליה' : '';
+  XLSX.writeFile(wb, `שלטים_${projName}${statSuffix}_${new Date().toLocaleDateString('he-IL').replace(/\./g,'-')}.xlsx`);
+  showToast('הקובץ הורד בהצלחה', 'success');
+}
+
+async function signsUpdateField(commId, field, value, refreshTable) {
   const updates = { [field]: value };
   if (window._signsComms && window._signsComms[commId]) {
     Object.assign(window._signsComms[commId], updates);
   }
   if (allComms[commId]) Object.assign(allComms[commId], updates);
-  if (!IS_CONFIGURED) { showToast(value ? '✅ עודכן' : '✓ בוטל', 'success'); return; }
+  if (!IS_CONFIGURED) { showToast(value ? '✅ עודכן' : '✓ בוטל', 'success'); if (refreshTable) signsApplyFilter(); return; }
   try {
     await db.ref(`commemorations/${commId}`).update(updates);
     showToast(value ? '✅ עודכן' : '✓ בוטל', 'success');
+    if (refreshTable) signsApplyFilter();
   } catch(e) {
     showToast('שגיאה: ' + e.message, 'error');
   }
