@@ -301,6 +301,7 @@
     .tag-success { background: #E8F5E9; color: #2E7D32; }
     .tag-warning { background: #FFF3E0; color: #E65100; }
     .tag-gray { background: #F0F0F0; color: #555; }
+    .tag-completion { background: #E3F2FD; color: #1565C0; }
 
     /* ===== MISC ===== */
     .divider { border: none; border-top: 1px solid var(--border); margin: 16px 0; }
@@ -1000,6 +1001,8 @@ let editingCommId = null;
 let commListener = null;
 let selectedExportProjects = new Set();
 let drawerProjectId = null;
+let _projectsPageEntries = [];
+let _projectsCommsList = null;
 
 // Demo data for unconfigured mode
 const DEMO_TYPES = {
@@ -1277,36 +1280,69 @@ function showPage(page, projectId) {
 //  PROJECTS PAGE
 // ============================================================
 async function renderProjectsPage() {
-  setTopbar('פרויקטים פעילים', '');
+  setTopbar('פרויקטים', '');
   const content = document.getElementById('page-content');
 
   if (IS_CONFIGURED) await loadProjects();
 
   const isAdmin = currentUser.role === 'admin';
-  const entries = Object.entries(allProjects).filter(([, p]) => isAdmin ? true : p.isActive);
+  // Non-admin: only non-closed; Admin: all projects
+  _projectsPageEntries = Object.entries(allProjects)
+    .filter(([, p]) => isAdmin ? true : getProjectStatus(p) !== 'closed');
+  _projectsCommsList = null;
 
   let html = IS_CONFIGURED ? '' : renderSetupBanner();
 
-  if (!entries.length) {
-    html += `<div class="empty-state"><div class="empty-icon">📋</div><h3>אין פרויקטים פעילים</h3><p>אדמין יכול ליצור פרויקטים חדשים</p></div>`;
-  } else {
-    html += `<div class="projects-grid">` + entries.map(([id, p]) => renderProjectCard(id, p)).join('') + `</div>`;
-  }
+  html += `<div class="filters-bar">
+    <span class="filter-label">סינון לפי סטאטוס:</span>
+    <select class="filter-select" id="filter-project-status" onchange="filterProjectsGrid()">
+      <option value="">כל הסטאטוסים</option>
+      <option value="active">● פעיל</option>
+      <option value="completion">🔵 בהשלמה</option>
+      ${isAdmin ? '<option value="closed">⬤ סגור</option>' : ''}
+    </select>
+  </div>
+  <div id="projects-grid-container"></div>`;
 
   content.innerHTML = html;
+  filterProjectsGrid();
 
+  // Load comms stats once and cache
   if (IS_CONFIGURED) {
-    // Fetch all commemorations in one query to avoid multiple Firebase calls and index issues
     db.ref('commemorations').once('value').then(snap => {
-      const allCommsList = [];
-      if (snap.exists()) snap.forEach(c => allCommsList.push(c.val()));
-      entries.forEach(([id]) => {
-        updateProjectStats(id, allCommsList.filter(c => c.projectId === id));
-      });
+      _projectsCommsList = [];
+      if (snap.exists()) snap.forEach(c => _projectsCommsList.push(c.val()));
+      _projectsPageEntries.forEach(([id]) =>
+        updateProjectStats(id, _projectsCommsList.filter(c => c.projectId === id)));
     });
   } else {
-    entries.forEach(([id]) => updateProjectStats(id, Object.values(allComms).filter(c => c.projectId === id)));
+    _projectsCommsList = Object.values(allComms);
+    _projectsPageEntries.forEach(([id]) =>
+      updateProjectStats(id, _projectsCommsList.filter(c => c.projectId === id)));
   }
+}
+
+function filterProjectsGrid() {
+  const statusFilter = document.getElementById('filter-project-status')?.value || '';
+  let entries = _projectsPageEntries;
+  if (statusFilter) {
+    entries = entries.filter(([, p]) => getProjectStatus(p) === statusFilter);
+  }
+
+  const container = document.getElementById('projects-grid-container');
+  if (!container) return;
+
+  if (!entries.length) {
+    container.innerHTML = `<div class="empty-state"><div class="empty-icon">📋</div><h3>אין פרויקטים${statusFilter ? ' בסטאטוס זה' : ''}</h3><p>אדמין יכול ליצור פרויקטים חדשים</p></div>`;
+    return;
+  }
+
+  container.innerHTML = `<div class="projects-grid">` + entries.map(([id, p]) => renderProjectCard(id, p)).join('') + `</div>`;
+
+  // Apply cached stats to newly rendered cards
+  const commsList = _projectsCommsList !== null ? _projectsCommsList : Object.values(allComms);
+  entries.forEach(([id]) =>
+    updateProjectStats(id, commsList.filter(c => c.projectId === id)));
 }
 
 function renderSetupBanner() {
@@ -1512,7 +1548,7 @@ function renderCommCard(id, c, blockedByWhole) {
   const badgeLabel = isBlocked ? '🔒 חסומה' : (isCompletionAvailable ? '🔵 להשלמה' : statusLabels[c.status]);
 
   const cardStyle = isBlocked ? ' style="opacity:0.55;border-color:#ccc;"' : '';
-  const wholeProjectBadge = c.isWholeProject ? '<span style="font-size:10px;background:#FFF3E0;color:#E65100;border-radius:4px;padding:1px 5px;font-weight:600;margin-bottom:2px;display:inline-block;">⭐ כל הפרויקט</span><br>' : (c.isFreeItem ? '<span style="font-size:10px;background:rgba(107,76,139,0.12);color:var(--primary);border-radius:4px;padding:1px 5px;font-weight:600;margin-bottom:2px;display:inline-block;">✏️ חופשי</span><br>' : '');
+  const wholeProjectBadge = c.isWholeProject ? '<span style="font-size:10px;background:#FFF3E0;color:#E65100;border-radius:4px;padding:1px 5px;font-weight:600;margin-bottom:2px;display:inline-block;">⭐ כל הפרויקט</span><br>' : '';
 
   return `<div class="comm-card ${cardClass}"${cardStyle} onclick="openCommDetail('${id}')">
     <span class="comm-status-badge ${badgeClass}">${badgeLabel}</span>
@@ -2705,8 +2741,8 @@ async function renderAdminProjectCommsPage() {
   const statusTagClass = { available: 'tag-success', captured: 'tag-warning', sold: 'tag-gray' };
   const rows = Object.entries(comms).map(([id,c]) => `
     <tr>
-      <td><strong>${esc(c.name)}</strong>${c.isWholeProject ? ' <span class="tag tag-warning" style="font-size:11px;vertical-align:middle;">⭐ כל הפרויקט</span>' : ''}${c.isFreeItem ? ' <span class="tag tag-primary" style="font-size:11px;vertical-align:middle;">✏️ חופשי</span>' : ''}${c.notes ? `<div style="font-size:12px;color:var(--text-muted);margin-top:2px;">${esc(c.notes)}</div>` : ''}</td>
-      <td>${esc(allTypes[c.typeId]?.name||(c.isFreeItem?'פריט חופשי':''))}</td>
+      <td><strong>${esc(c.name)}</strong>${c.isWholeProject ? ' <span class="tag tag-warning" style="font-size:11px;vertical-align:middle;">⭐ כל הפרויקט</span>' : ''}${c.notes ? `<div style="font-size:12px;color:var(--text-muted);margin-top:2px;">${esc(c.notes)}</div>` : ''}</td>
+      <td>${esc(allTypes[c.typeId]?.name||'')}</td>
       <td>₪${(c.price||0).toLocaleString()}</td>
       <td><span class="tag ${statusTagClass[c.status]||''}">${statusLabels[c.status]||''}</span></td>
       <td>
@@ -3282,6 +3318,15 @@ function renderSearchPage() {
           oninput="debounceSearch()">
       </div>
       <div>
+        <div class="filter-label" style="margin-bottom:6px;">סטאטוס פרויקט</div>
+        <select class="filter-select" id="search-project-status" onchange="runSearch()">
+          <option value="">כל הסטאטוסים</option>
+          <option value="active">● פעיל</option>
+          <option value="completion">🔵 בהשלמה</option>
+          <option value="closed">⬤ סגור</option>
+        </select>
+      </div>
+      <div>
         <div class="filter-label" style="margin-bottom:6px;">סוג הנצחה</div>
         <select class="filter-select" id="search-type" onchange="runSearch()">
           <option value="">כל הסוגים</option>
@@ -3317,6 +3362,7 @@ function debounceSearch() {
 
 async function runSearch() {
   const projectNameQuery = (document.getElementById('search-project-name')?.value || '').trim().toLowerCase();
+  const projectStatusFilter = document.getElementById('search-project-status')?.value || '';
   const typeFilter = document.getElementById('search-type')?.value || '';
   const sortMode = document.getElementById('search-sort')?.value || 'default';
   const resultsEl = document.getElementById('search-results');
@@ -3326,23 +3372,32 @@ async function runSearch() {
 
   const isAdmin = currentUser.role === 'admin';
 
-  // בברירת מחדל — פרויקטים פעילים ולהשלמה בלבד (לא סגורים), אלא אם מחפשים לפי שם
   const matchingProjects = Object.entries(allProjects).filter(([id, p]) => {
     const pSt = getProjectStatus(p);
-    // סינון בסיסי: רק פעיל/להשלמה אלא אם אדמין ומחפש שם ספציפי
-    if (!projectNameQuery) {
-      // ברירת מחדל — הצג רק פעיל ולהשלמה
-      if (pSt === 'closed') return false;
-    } else {
-      // יש חיפוש שם — כולל גם סגורים אם מתאים לשם
+
+    // פילטר סטאטוס ידני (כשנבחר מפורשות)
+    if (projectStatusFilter) {
+      if (pSt !== projectStatusFilter) return false;
+      // גם אם בחרו סגור — non-admin לא יראה סגורים
       if (!isAdmin && pSt === 'closed') return false;
-      if (!p.name.toLowerCase().includes(projectNameQuery)) return false;
+    } else {
+      // ברירת מחדל: הסתר סגורים מ-non-admin; הסתר סגורים מכולם אלא אם חיפוש שם
+      if (!projectNameQuery) {
+        if (pSt === 'closed') return false;
+      } else {
+        if (!isAdmin && pSt === 'closed') return false;
+      }
     }
+
+    // פילטר שם פרויקט
+    if (projectNameQuery && !p.name.toLowerCase().includes(projectNameQuery)) return false;
+
     return true;
   });
 
-  if (!matchingProjects.length && projectNameQuery) {
-    resultsEl.innerHTML = `<div class="empty-state"><div class="empty-icon">🔍</div><h3>לא נמצאו פרויקטים מתאימים</h3><p>נסה שם אחר</p></div>`;
+  if (!matchingProjects.length) {
+    const reason = projectNameQuery ? 'נסה שם אחר' : (projectStatusFilter ? 'אין פרויקטים בסטאטוס זה' : '');
+    resultsEl.innerHTML = `<div class="empty-state"><div class="empty-icon">🔍</div><h3>לא נמצאו פרויקטים מתאימים</h3>${reason ? `<p>${reason}</p>` : ''}</div>`;
     return;
   }
 
@@ -3422,7 +3477,7 @@ async function runSearch() {
 function renderSearchCommCard(id, c) {
   const project = allProjects[c.projectId];
   if (!project) return '';
-  const type = allTypes[c.typeId]?.name || (c.isWholeProject ? 'כל הפרויקט' : (c.isFreeItem ? 'פריט חופשי' : ''));
+  const type = allTypes[c.typeId]?.name || (c.isWholeProject ? 'כל הפרויקט' : '');
   const badgeClasses = { available: 'badge-available', captured: 'badge-captured', sold: 'badge-sold' };
   const priority = project.priority || 3;
   const isMine = c.capturedBy === currentUser.uid;
@@ -3441,7 +3496,7 @@ function renderSearchCommCard(id, c) {
 
   const wholeProjectBadge = c.isWholeProject
     ? '<span style="font-size:10px;background:#FFF3E0;color:#E65100;border-radius:4px;padding:1px 5px;font-weight:600;margin-bottom:2px;display:inline-block;">⭐ כל הפרויקט</span><br>'
-    : (c.isFreeItem ? '<span style="font-size:10px;background:rgba(107,76,139,0.12);color:var(--primary);border-radius:4px;padding:1px 5px;font-weight:600;margin-bottom:2px;display:inline-block;">✏️ חופשי</span><br>' : '');
+    : '';
 
   let actions = '';
   if (isProjectActive && !isBlocked) {
