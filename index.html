@@ -2931,6 +2931,16 @@ function renderSearchPage() {
           ${typeOptions}
         </select>
       </div>
+      <div>
+        <div class="filter-label" style="margin-bottom:6px;">מיון</div>
+        <select class="filter-select" id="search-sort" onchange="runSearch()">
+          <option value="default">🔵 להשלמה קודם → עדיפות → מחיר ↓</option>
+          <option value="priority">עדיפות פרויקט → מחיר ↓</option>
+          <option value="price-desc">מחיר — מהגבוה לנמוך</option>
+          <option value="price-asc">מחיר — מהנמוך לגבוה</option>
+          <option value="project-name">לפי שם פרויקט (א–ת)</option>
+        </select>
+      </div>
       <button class="btn btn-primary" onclick="runSearch()">🔍 חפש</button>
     </div>
     <div id="search-results" style="margin-top:20px;">
@@ -2951,18 +2961,26 @@ function debounceSearch() {
 async function runSearch() {
   const projectNameQuery = (document.getElementById('search-project-name')?.value || '').trim().toLowerCase();
   const typeFilter = document.getElementById('search-type')?.value || '';
+  const sortMode = document.getElementById('search-sort')?.value || 'default';
   const resultsEl = document.getElementById('search-results');
   if (!resultsEl) return;
-
-  // אם אין סינון — מציג את כל הפנויות
 
   resultsEl.innerHTML = `<div class="empty-state"><div class="empty-icon">⏳</div><h3>מחפש...</h3></div>`;
 
   const isAdmin = currentUser.role === 'admin';
 
-  const matchingProjects = Object.entries(allProjects).filter(([,p]) => {
-    if (!isAdmin && !p.isActive) return false;
-    if (projectNameQuery && !p.name.toLowerCase().includes(projectNameQuery)) return false;
+  // בברירת מחדל — פרויקטים פעילים ולהשלמה בלבד (לא סגורים), אלא אם מחפשים לפי שם
+  const matchingProjects = Object.entries(allProjects).filter(([id, p]) => {
+    const pSt = getProjectStatus(p);
+    // סינון בסיסי: רק פעיל/להשלמה אלא אם אדמין ומחפש שם ספציפי
+    if (!projectNameQuery) {
+      // ברירת מחדל — הצג רק פעיל ולהשלמה
+      if (pSt === 'closed') return false;
+    } else {
+      // יש חיפוש שם — כולל גם סגורים אם מתאים לשם
+      if (!isAdmin && pSt === 'closed') return false;
+      if (!p.name.toLowerCase().includes(projectNameQuery)) return false;
+    }
     return true;
   });
 
@@ -2971,9 +2989,7 @@ async function runSearch() {
     return;
   }
 
-  const matchingProjectIds = matchingProjects.length
-    ? new Set(matchingProjects.map(([id]) => id))
-    : new Set(Object.keys(allProjects).filter(id => isAdmin || allProjects[id].isActive));
+  const matchingProjectIds = new Set(matchingProjects.map(([id]) => id));
 
   let commsEntries = [];
 
@@ -2983,7 +2999,7 @@ async function runSearch() {
     const snap = await db.ref('commemorations').once('value');
     if (snap.exists()) snap.forEach(child => {
       commsEntries.push([child.key, child.val()]);
-      allComms[child.key] = child.val(); // store in allComms so openCapture/openSell work
+      allComms[child.key] = child.val();
     });
   }
 
@@ -2999,16 +3015,48 @@ async function runSearch() {
     return;
   }
 
-  // מיון: עדיפות פרויקט (1 ראשון), אחר כך מחיר מגבוה לנמוך
+  // --- מיון ---
+  const sortLabels = {
+    'default':      'להשלמה קודם → עדיפות → מחיר ↓',
+    'priority':     'עדיפות פרויקט → מחיר ↓',
+    'price-desc':   'מחיר — מהגבוה לנמוך',
+    'price-asc':    'מחיר — מהנמוך לגבוה',
+    'project-name': 'לפי שם פרויקט'
+  };
+
   filtered.sort((a, b) => {
-    const prioA = allProjects[a[1].projectId]?.priority || 3;
-    const prioB = allProjects[b[1].projectId]?.priority || 3;
-    if (prioA !== prioB) return prioA - prioB;
-    return (b[1].price || 0) - (a[1].price || 0);
+    const pA = allProjects[a[1].projectId] || {};
+    const pB = allProjects[b[1].projectId] || {};
+    const prioA = pA.priority || 3;
+    const prioB = pB.priority || 3;
+    const priceA = a[1].price || 0;
+    const priceB = b[1].price || 0;
+
+    if (sortMode === 'default') {
+      // 1. להשלמה קודם
+      const compA = getProjectStatus(pA) === 'completion' ? 0 : 1;
+      const compB = getProjectStatus(pB) === 'completion' ? 0 : 1;
+      if (compA !== compB) return compA - compB;
+      // 2. עדיפות פרויקט (1 = ראשון)
+      if (prioA !== prioB) return prioA - prioB;
+      // 3. מחיר מגבוה לנמוך
+      return priceB - priceA;
+    }
+    if (sortMode === 'priority') {
+      if (prioA !== prioB) return prioA - prioB;
+      return priceB - priceA;
+    }
+    if (sortMode === 'price-desc') return priceB - priceA;
+    if (sortMode === 'price-asc')  return priceA - priceB;
+    if (sortMode === 'project-name') return (pA.name||'').localeCompare(pB.name||'', 'he');
+    return 0;
   });
 
   resultsEl.innerHTML =
-    `<div style="margin-bottom:14px;font-size:14px;color:var(--text-muted);">נמצאו <strong style="color:var(--primary-dark);">${filtered.length}</strong> הנצחות פנויות (ממוין לפי עדיפות ומחיר)</div>` +
+    `<div style="margin-bottom:14px;font-size:14px;color:var(--text-muted);">
+      נמצאו <strong style="color:var(--primary-dark);">${filtered.length}</strong> הנצחות פנויות
+      <span style="color:var(--text-muted);font-size:12px;">· ממוין: ${sortLabels[sortMode]||''}</span>
+    </div>` +
     filtered.map(([id,c]) => renderSearchResultCard(id,c)).join('');
 }
 
@@ -3021,6 +3069,8 @@ function renderSearchResultCard(id, c) {
   const priority = project.priority || 3;
   const isMine = c.capturedBy === currentUser.uid;
   const isProjectActive = project.isActive;
+  const pStatus = getProjectStatus(project);
+  const isCompletion = pStatus === 'completion';
 
   // Check if this comm is blocked by a whole-project capture/sale
   const isBlocked = !c.isWholeProject && c.status === 'available' &&
@@ -3051,18 +3101,22 @@ function renderSearchResultCard(id, c) {
     }
   }
 
+  const cardStyle = isCompletion ? ' border-color:#42A5F5; background:#E3F2FD;' : '';
+  const statusTagText = isCompletion ? 'להשלמה' : (project.isActive ? 'פעיל' : 'סגור');
+  const statusTagClass = isCompletion ? 'tag-completion' : (project.isActive ? 'tag-success' : 'tag-warning');
+
   return `
-    <div class="search-result-card">
+    <div class="search-result-card" style="${cardStyle}">
       <div class="search-result-project">
         <span class="priority-badge priority-${priority}">${priority}</span>
         <span>${esc(project.name)}</span>
-        <span class="tag ${project.isActive?'tag-success':'tag-warning'}" style="font-size:11px;">${project.isActive?'פעיל':'סגור'}</span>
+        <span class="tag ${statusTagClass}" style="font-size:11px;">${isCompletion ? '🔵 ' : ''}${statusTagText}</span>
         <button class="btn btn-ghost btn-sm" style="margin-right:auto;font-size:12px;padding:4px 10px;" onclick="toggleMikvehPanel('${c.projectId}')">🕍 פרטים על המקווה</button>
       </div>
       <div class="mikveh-panel-slot" data-project-id="${c.projectId}" style="display:none;"></div>
       <div class="search-result-name">${esc(c.name)}</div>
       <div class="search-result-meta">
-        <span class="tag ${isBlocked ? 'badge-sold' : (badgeClasses[c.status]||'')}" style="font-size:11px;">${isBlocked ? '🔒 חסומה' : (statusLabels[c.status]||'')}</span>
+        <span class="tag ${isBlocked ? 'badge-sold' : (isCompletion && c.status === 'available' ? 'badge-completion' : (badgeClasses[c.status]||''))}" style="font-size:11px;">${isBlocked ? '🔒 חסומה' : (statusLabels[c.status]||'')}</span>
         <span>${esc(type)}</span>
         <span>·</span>
         <span style="color:var(--accent);font-weight:700;">₪${(c.price||0).toLocaleString()}</span>
