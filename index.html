@@ -409,6 +409,72 @@
     .search-result-name { font-size: 16px; font-weight: 700; color: var(--primary-dark); margin-bottom: 6px; }
     .search-result-meta { font-size: 13px; color: var(--text-muted); display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
 
+    /* ===== PROJECT DRAWER ===== */
+    .drawer-backdrop {
+      position: fixed; inset: 0;
+      background: rgba(0,0,0,0.38);
+      z-index: 150; display: none;
+    }
+    .drawer-backdrop.open { display: block; }
+    .project-drawer {
+      position: fixed; top: 0; left: 0; bottom: 0;
+      width: 440px; max-width: 96vw;
+      background: white; z-index: 151;
+      box-shadow: -6px 0 40px rgba(0,0,0,0.18);
+      transform: translateX(-100%);
+      transition: transform 0.3s cubic-bezier(.4,0,.2,1);
+      display: flex; flex-direction: column;
+      overflow: hidden;
+    }
+    .project-drawer.open { transform: translateX(0); }
+    .drawer-header {
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 20px 24px 16px;
+      border-bottom: 2px solid var(--border);
+      background: var(--primary-dark);
+      color: white; flex-shrink: 0;
+    }
+    .drawer-header-title { font-size: 17px; font-weight: 800; flex: 1; margin-left: 10px; }
+    .drawer-close-btn {
+      background: rgba(255,255,255,0.15); border: none; color: white;
+      width: 32px; height: 32px; border-radius: 50%; font-size: 16px;
+      cursor: pointer; display: flex; align-items: center; justify-content: center;
+      transition: background 0.15s; flex-shrink: 0;
+    }
+    .drawer-close-btn:hover { background: rgba(255,255,255,0.28); }
+    .drawer-body { flex: 1; overflow-y: auto; padding: 22px 24px; }
+    .drawer-footer {
+      padding: 14px 24px; border-top: 1px solid var(--border);
+      display: flex; gap: 8px; flex-shrink: 0; flex-wrap: wrap;
+      background: var(--bg);
+    }
+    .drawer-section {
+      margin-bottom: 20px; padding: 14px 16px;
+      background: var(--bg); border-radius: 10px;
+      border: 1px solid var(--border);
+    }
+    .drawer-section-title {
+      font-size: 12px; font-weight: 700; color: var(--text-muted);
+      text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 8px;
+    }
+    .drawer-section-body {
+      font-size: 14px; color: var(--text); line-height: 1.7;
+      white-space: pre-wrap;
+    }
+    .drawer-stat-grid {
+      display: grid; grid-template-columns: repeat(3,1fr); gap: 10px; margin-top: 8px;
+    }
+    .drawer-stat-cell {
+      text-align: center; border-radius: 10px; padding: 12px 6px;
+    }
+    .drawer-stat-num { font-size: 22px; font-weight: 800; }
+    .drawer-stat-lbl { font-size: 11px; color: var(--text-muted); margin-top: 2px; }
+    .drawer-row { display: flex; align-items: baseline; gap: 8px; font-size: 14px; margin-bottom: 7px; }
+    .drawer-row .drawer-lbl { color: var(--text-muted); font-weight: 600; min-width: 100px; flex-shrink: 0; font-size: 13px; }
+    @media (max-width: 768px) {
+      .project-drawer { width: 100%; }
+    }
+
     /* ===== MIKVEH PANEL ===== */
     .mikveh-panel {
       background: linear-gradient(135deg, #F3EFF8, #EDE7F6);
@@ -869,6 +935,17 @@
   </div>
 </div>
 
+<!-- PROJECT DRAWER -->
+<div class="drawer-backdrop" id="drawer-backdrop" onclick="closeProjectDrawer()"></div>
+<div class="project-drawer" id="project-drawer">
+  <div class="drawer-header">
+    <div class="drawer-header-title" id="drawer-title">פרטי פרויקט</div>
+    <button class="drawer-close-btn" onclick="closeProjectDrawer()">✕</button>
+  </div>
+  <div class="drawer-body" id="drawer-body"></div>
+  <div class="drawer-footer" id="drawer-footer"></div>
+</div>
+
 <!-- TOAST -->
 <div class="toast-container" id="toast-container"></div>
 
@@ -922,6 +999,7 @@ let editingCommProjectId = null;
 let editingCommId = null;
 let commListener = null;
 let selectedExportProjects = new Set();
+let drawerProjectId = null;
 
 // Demo data for unconfigured mode
 const DEMO_TYPES = {
@@ -2210,6 +2288,194 @@ async function exportAllCommsToExcel() {
 // ============================================================
 //  ADMIN: PROJECTS
 // ============================================================
+// ============================================================
+//  PROJECT DRAWER
+// ============================================================
+function openProjectDrawer(id) {
+  drawerProjectId = id;
+  renderDrawerView();
+  document.getElementById('drawer-backdrop').classList.add('open');
+  document.getElementById('project-drawer').classList.add('open');
+}
+
+function closeProjectDrawer() {
+  document.getElementById('drawer-backdrop').classList.remove('open');
+  document.getElementById('project-drawer').classList.remove('open');
+  drawerProjectId = null;
+}
+
+function renderDrawerView() {
+  const id = drawerProjectId;
+  const p = allProjects[id];
+  if (!p) return;
+
+  const pStatus = getProjectStatus(p);
+  const statusLabel = pStatus === 'active' ? 'פעיל' : pStatus === 'completion' ? 'להשלמה' : 'סגור';
+  const statusClass = pStatus === 'active' ? 'tag-success' : pStatus === 'completion' ? 'tag-completion' : 'tag-warning';
+  const stageColors = { 'תכנון': '#5C6BC0', 'בניה': '#F57C00', 'גימור': '#00897B', 'סיום': '#43A047' };
+  const priorityLabels = { 1: 'גבוהה מאוד', 2: 'גבוהה', 3: 'בינונית', 4: 'נמוכה', 5: 'נמוכה מאוד' };
+
+  // סטטיסטיקת הנצחות מהנתונים הטעונים
+  const projectComms = Object.values(allComms).filter(c => c.projectId === id);
+  const total = projectComms.length;
+  const sold = projectComms.filter(c => c.status === 'sold').length;
+  const captured = projectComms.filter(c => c.status === 'captured').length;
+  const available = projectComms.filter(c => c.status === 'available').length;
+  const pct = total ? Math.round(sold / total * 100) : 0;
+
+  document.getElementById('drawer-title').textContent = p.name;
+
+  document.getElementById('drawer-body').innerHTML = `
+    <!-- שורת תגיות עליונה -->
+    <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:20px;align-items:center;">
+      <span class="tag ${statusClass}" style="font-size:13px;padding:4px 12px;">${pStatus === 'completion' ? '🔵 ' : ''}${statusLabel}</span>
+      <span class="priority-badge priority-${p.priority||3}" title="עדיפות">${p.priority||3}</span>
+      ${p.stage ? `<span style="display:inline-block;padding:4px 12px;border-radius:20px;font-size:12px;font-weight:700;background:${stageColors[p.stage]||'var(--primary)'};color:white;">📍 ${esc(p.stage)}</span>` : ''}
+    </div>
+
+    <!-- פרטים בסיסיים -->
+    <div class="drawer-section">
+      <div class="drawer-section-title">📋 פרטי פרויקט</div>
+      <div class="drawer-row"><span class="drawer-lbl">סטאטוס:</span> <span class="tag ${statusClass}" style="font-size:12px;">${statusLabel}</span></div>
+      <div class="drawer-row"><span class="drawer-lbl">עדיפות:</span> <strong>${p.priority||3}</strong> — ${priorityLabels[p.priority||3]||''}</div>
+      <div class="drawer-row"><span class="drawer-lbl">שלב נוכחי:</span> ${p.stage ? `<span style="background:${stageColors[p.stage]||'var(--primary)'};color:white;padding:2px 10px;border-radius:20px;font-size:12px;font-weight:700;">${esc(p.stage)}</span>` : '<span style="color:var(--text-muted)">לא הוגדר</span>'}</div>
+      <div class="drawer-row"><span class="drawer-lbl">צפי לסיום:</span> ${p.expectedCompletion ? `<strong>${esc(p.expectedCompletion)}</strong>` : '<span style="color:var(--text-muted)">לא הוגדר</span>'}</div>
+      <div class="drawer-row"><span class="drawer-lbl">נוצר:</span> ${p.createdAt ? new Date(p.createdAt).toLocaleDateString('he-IL') : '—'}</div>
+    </div>
+
+    ${p.description ? `
+    <div class="drawer-section">
+      <div class="drawer-section-title">📄 תיאור</div>
+      <div class="drawer-section-body">${esc(p.description)}</div>
+    </div>` : ''}
+
+    ${p.notes ? `
+    <div class="drawer-section">
+      <div class="drawer-section-title">📝 הערות</div>
+      <div class="drawer-section-body">${esc(p.notes)}</div>
+    </div>` : ''}
+
+    <!-- סטטיסטיקה -->
+    <div class="drawer-section">
+      <div class="drawer-section-title">📊 הנצחות</div>
+      ${total === 0 ? '<div style="color:var(--text-muted);font-size:13px;">אין הנצחות בפרויקט זה עדיין</div>' : `
+      <div class="drawer-stat-grid">
+        <div class="drawer-stat-cell" style="background:#E8F5E9;">
+          <div class="drawer-stat-num" style="color:#2E7D32;">${sold}</div>
+          <div class="drawer-stat-lbl">נמכרו</div>
+        </div>
+        <div class="drawer-stat-cell" style="background:#FFF3E0;">
+          <div class="drawer-stat-num" style="color:#E65100;">${captured}</div>
+          <div class="drawer-stat-lbl">תפוסות</div>
+        </div>
+        <div class="drawer-stat-cell" style="background:#E3F2FD;">
+          <div class="drawer-stat-num" style="color:#1565C0;">${available}</div>
+          <div class="drawer-stat-lbl">פנויות</div>
+        </div>
+      </div>
+      <div style="margin-top:12px;">
+        <div class="progress-bar-wrap" style="margin-bottom:5px;">
+          <div class="progress-bar-fill" style="width:${pct}%"></div>
+        </div>
+        <div style="font-size:12px;color:var(--text-muted);text-align:center;">${pct}% נמכר · ${sold} מתוך ${total} הנצחות</div>
+      </div>`}
+    </div>
+  `;
+
+  document.getElementById('drawer-footer').innerHTML = `
+    <button class="btn btn-ghost btn-sm" onclick="showPage('admin-project-comms','${id}')">✏️ ניהול הנצחות</button>
+    <button class="btn btn-primary btn-sm" style="margin-right:auto;" onclick="startDrawerEdit()">📝 עריכה</button>
+    <button class="btn btn-danger btn-sm" onclick="deleteProject('${id}','${esc(p.name)}');closeProjectDrawer()">🗑️ מחק</button>
+  `;
+}
+
+function startDrawerEdit() {
+  const id = drawerProjectId;
+  const p = allProjects[id];
+  if (!p) return;
+
+  const pStatus = getProjectStatus(p);
+  const stageOptions = appSettings.projectStages.map(s =>
+    `<option value="${esc(s)}"${p.stage === s ? ' selected' : ''}>${esc(s)}</option>`
+  ).join('');
+
+  document.getElementById('drawer-body').innerHTML = `
+    <div class="form-group">
+      <label>שם הפרויקט <span class="req">*</span></label>
+      <input class="form-control" id="drawer-name" value="${esc(p.name)}">
+    </div>
+    <div class="form-group">
+      <label>תיאור הפרויקט</label>
+      <textarea class="form-control" id="drawer-description" rows="3" style="resize:vertical;">${esc(p.description||'')}</textarea>
+    </div>
+    <div class="form-group">
+      <label>הערות</label>
+      <textarea class="form-control" id="drawer-notes" rows="3" style="resize:vertical;">${esc(p.notes||'')}</textarea>
+    </div>
+    <div class="form-group">
+      <label>סטאטוס פרויקט</label>
+      <select class="form-control" id="drawer-status">
+        <option value="active"${pStatus==='active'?' selected':''}>פעיל</option>
+        <option value="completion"${pStatus==='completion'?' selected':''}>להשלמה</option>
+        <option value="closed"${pStatus==='closed'?' selected':''}>סגור</option>
+      </select>
+    </div>
+    <div class="form-group">
+      <label>עדיפות מכירה</label>
+      <select class="form-control" id="drawer-priority">
+        <option value="1"${(p.priority||3)==1?' selected':''}>1 — גבוהה מאוד</option>
+        <option value="2"${(p.priority||3)==2?' selected':''}>2 — גבוהה</option>
+        <option value="3"${(p.priority||3)==3?' selected':''}>3 — בינונית</option>
+        <option value="4"${(p.priority||3)==4?' selected':''}>4 — נמוכה</option>
+        <option value="5"${(p.priority||3)==5?' selected':''}>5 — נמוכה מאוד</option>
+      </select>
+    </div>
+    <div class="form-group">
+      <label>שלב נוכחי</label>
+      <select class="form-control" id="drawer-stage">
+        <option value="">— בחר שלב —</option>
+        ${stageOptions}
+      </select>
+    </div>
+    <div class="form-group">
+      <label>צפי לסיום</label>
+      <input class="form-control" type="date" id="drawer-expected" value="${p.expectedCompletion||''}">
+    </div>
+  `;
+
+  document.getElementById('drawer-footer').innerHTML = `
+    <button class="btn btn-ghost btn-sm" onclick="renderDrawerView()">✕ ביטול</button>
+    <button class="btn btn-primary" style="margin-right:auto;" onclick="saveDrawerProject()">💾 שמור שינויים</button>
+  `;
+}
+
+async function saveDrawerProject() {
+  const id = drawerProjectId;
+  const name = document.getElementById('drawer-name').value.trim();
+  if (!name) { showToast('נא להזין שם פרויקט', 'error'); return; }
+
+  const description = document.getElementById('drawer-description').value.trim();
+  const notes       = document.getElementById('drawer-notes').value.trim();
+  const projectStatus = document.getElementById('drawer-status').value || 'active';
+  const priority    = parseInt(document.getElementById('drawer-priority').value) || 3;
+  const stage       = document.getElementById('drawer-stage').value || null;
+  const expectedCompletion = document.getElementById('drawer-expected').value || null;
+  const isActive    = projectStatus !== 'closed';
+
+  const data = { name, description: description||null, notes: notes||null, priority, stage, expectedCompletion, projectStatus, isActive };
+
+  if (!IS_CONFIGURED) {
+    Object.assign(allProjects[id], data);
+  } else {
+    await db.ref(`projects/${id}`).update(data);
+    await loadProjects();
+  }
+
+  showToast('✅ הפרויקט נשמר', 'success');
+  renderDrawerView();
+  renderAdminProjectsPage();
+}
+
 async function renderAdminProjectsPage() {
   setTopbar('ניהול פרויקטים', `<button class="btn btn-primary btn-sm" onclick="openProjectModal()">➕ פרויקט חדש</button>`);
   if (IS_CONFIGURED) await loadProjects();
@@ -2225,21 +2491,21 @@ async function renderAdminProjectsPage() {
                       pStatus === 'completion' ? '<span class="tag tag-completion">להשלמה</span>' :
                       '<span class="tag tag-warning">סגור</span>';
     return `
-    <tr>
+    <tr style="cursor:pointer;" onclick="openProjectDrawer('${id}')">
       <td style="text-align:center;"><span class="priority-badge priority-${p.priority||3}">${p.priority||3}</span></td>
       <td>
-        <strong>${esc(p.name)}</strong>
-        ${p.notes ? `<div style="font-size:12px;color:var(--text-muted);margin-top:2px;">📝 ${esc(p.notes)}</div>` : ''}
+        <strong style="color:var(--primary);text-decoration:underline dotted;">${esc(p.name)}</strong>
+        ${p.notes ? `<div style="font-size:12px;color:var(--text-muted);margin-top:2px;">📝 ${esc(p.notes.length>60?p.notes.slice(0,60)+'…':p.notes)}</div>` : ''}
       </td>
       <td>
         ${p.stage ? `<span style="display:inline-block;padding:2px 10px;border-radius:20px;font-size:11px;font-weight:700;background:${stageColors[p.stage]||'var(--primary)'};color:white;margin-bottom:4px;">📍 ${esc(p.stage)}</span><br>` : ''}
         ${p.expectedCompletion ? `<span style="font-size:12px;color:var(--text-muted);">🗓 ${esc(p.expectedCompletion)}</span>` : ''}
       </td>
       <td>${statusTag}</td>
-      <td>
+      <td onclick="event.stopPropagation()">
         <div class="btn-row">
           <button class="btn btn-ghost btn-sm" onclick="showPage('admin-project-comms','${id}')">✏️ הנצחות</button>
-          <button class="btn btn-ghost btn-sm" onclick="openProjectModal('${id}')">📝 עריכה</button>
+          <button class="btn btn-ghost btn-sm" onclick="openProjectDrawer('${id}')">🔍 פרטים</button>
           <button class="btn btn-danger btn-sm" onclick="deleteProject('${id}','${esc(p.name)}')">🗑️ מחק</button>
         </div>
       </td>
@@ -3056,8 +3322,10 @@ async function runSearch() {
     `<div style="margin-bottom:14px;font-size:14px;color:var(--text-muted);">
       נמצאו <strong style="color:var(--primary-dark);">${filtered.length}</strong> הנצחות פנויות
       <span style="color:var(--text-muted);font-size:12px;">· ממוין: ${sortLabels[sortMode]||''}</span>
-    </div>` +
-    filtered.map(([id,c]) => renderSearchResultCard(id,c)).join('');
+    </div>
+    <div class="comms-grid">` +
+    filtered.map(([id,c]) => renderSearchCommCard(id,c)).join('') +
+    `</div>`;
 }
 
 function renderSearchResultCard(id, c) {
