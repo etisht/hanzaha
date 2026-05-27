@@ -498,7 +498,7 @@
     <div class="error-msg" id="login-error"></div>
     <div class="form-group">
       <label>שם משתמש</label>
-      <input class="form-control" type="text" id="login-username" placeholder="הזן שם משתמש" autocomplete="username">
+      <input class="form-control" type="text" id="login-username" placeholder="שם משתמש או אימייל" autocomplete="username">
     </div>
     <div class="form-group">
       <label>סיסמא</label>
@@ -1084,15 +1084,21 @@ async function doLogin() {
   }
 
   try {
-    const snap = await db.ref('users').orderByChild('username').equalTo(username).once('value');
-    if (!snap.exists()) { showLoginError('שם משתמש או סיסמא שגויים'); btn.disabled = false; btn.textContent = 'כניסה למערכת'; return; }
+    // Search by username first, then by email
     let found = null;
-    snap.forEach(child => {
+    const byUsername = await db.ref('users').orderByChild('username').equalTo(username).once('value');
+    byUsername.forEach(child => {
       if (child.val().password === password) found = { uid: child.key, ...child.val() };
     });
-    if (!found) { showLoginError('שם משתמש או סיסמא שגויים'); btn.disabled = false; btn.textContent = 'כניסה למערכת'; return; }
+    if (!found) {
+      const byEmail = await db.ref('users').orderByChild('email').equalTo(username).once('value');
+      byEmail.forEach(child => {
+        if (child.val().password === password) found = { uid: child.key, ...child.val() };
+      });
+    }
+    if (!found) { showLoginError('שם משתמש / אימייל או סיסמא שגויים'); btn.disabled = false; btn.textContent = 'כניסה למערכת'; return; }
     currentUser = found;
-    localStorage.setItem('hn_session', JSON.stringify({ uid: found.uid, username: found.username, displayName: found.displayName, role: found.role }));
+    localStorage.setItem('hn_session', JSON.stringify({ uid: found.uid, username: found.username || found.email, displayName: found.displayName, role: found.role }));
     startApp();
   } catch(e) {
     showLoginError('שגיאת חיבור: ' + e.message);
@@ -1134,10 +1140,16 @@ async function startApp() {
   }
 
   if (IS_CONFIGURED) {
-    await loadSettings();
-    await loadTypes();
-    await loadProjects();
-    checkExpiredCaptures();
+    try {
+      await loadSettings();
+      await loadTypes();
+      await loadProjects();
+      checkExpiredCaptures();
+    } catch(e) {
+      document.getElementById('page-content').innerHTML =
+        `<div class="empty-state"><div class="empty-icon">⚠️</div><h3>שגיאה בטעינה</h3><p style="color:var(--text-muted)">${e.message || 'בעיית חיבור לשרת'}</p><button class="btn btn-primary" onclick="location.reload()">🔄 נסה שוב</button></div>`;
+      return;
+    }
   } else {
     allTypes = { ...DEMO_TYPES };
     allProjects = JSON.parse(JSON.stringify(DEMO_PROJECTS));
