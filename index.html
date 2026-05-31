@@ -1578,7 +1578,7 @@ function openCapture(commId) {
   const c = allComms[commId];
   if (!c || c.status !== 'available') { showToast('ההנצחה כבר לא זמינה', 'error'); renderCommsGrid(); return; }
   if (!c.isWholeProject) {
-    const wholeBlocked = Object.values(allComms).some(w => w.isWholeProject && (w.status === 'captured' || w.status === 'sold'));
+    const wholeBlocked = Object.values(allComms).some(w => w.isWholeProject && w.projectId === c.projectId && (w.status === 'captured' || w.status === 'sold'));
     if (wholeBlocked) { showToast('לא ניתן לתפוס — הנצחת "כל הפרויקט" תפוסה', 'error'); return; }
   }
   pendingCaptureId = commId;
@@ -1683,7 +1683,7 @@ function openDirectSell(commId) {
   const c = allComms[commId];
   if (!c || c.status !== 'available') { showToast('ההנצחה כבר לא זמינה', 'error'); return; }
   if (!c.isWholeProject) {
-    const wholeBlocked = Object.values(allComms).some(w => w.isWholeProject && (w.status === 'captured' || w.status === 'sold'));
+    const wholeBlocked = Object.values(allComms).some(w => w.isWholeProject && w.projectId === c.projectId && (w.status === 'captured' || w.status === 'sold'));
     if (wholeBlocked) { showToast('לא ניתן למכור — הנצחת "כל הפרויקט" תפוסה', 'error'); return; }
   }
   pendingSellId = commId;
