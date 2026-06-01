@@ -618,8 +618,8 @@
       <input class="form-control" id="capture-donor-name" placeholder="שם התורם הפוטנציאלי">
     </div>
     <div class="form-group">
-      <label>שם מתרים</label>
-      <input class="form-control" id="capture-fundraiser-name" placeholder="שם המתרים">
+      <label>מקור התרומה</label>
+      <select class="form-control" id="capture-source"></select>
     </div>
     <div class="form-group">
       <label>הערה</label>
@@ -660,16 +660,8 @@
       <input class="form-control" id="sell-donor-number" placeholder="מספר תורם במערכת">
     </div>
     <div class="form-group">
-      <label>שם מתרים</label>
-      <input class="form-control" id="sell-fundraiser-name" placeholder="שם המתרים">
-    </div>
-    <div class="form-group">
-      <label>תת קטגוריה (מתרים)</label>
-      <input class="form-control" id="sell-fundraiser-sub" placeholder="תת קטגוריה">
-    </div>
-    <div class="form-group">
       <label>נוסח להנצחה <span class="req">*</span></label>
-      <input class="form-control" id="sell-commemoration-names" placeholder="שם / שמות להנצחה (חובה)">
+      <textarea class="form-control" id="sell-commemoration-names" rows="3" placeholder="שם / שמות להנצחה (חובה)" style="resize:vertical;"></textarea>
     </div>
     <div class="form-group">
       <label>מקור התרומה <span class="req">*</span></label>
@@ -696,7 +688,7 @@
     </div>
     <div class="modal-actions">
       <button class="btn btn-ghost" onclick="closeModal('modal-sell')">ביטול</button>
-      <button class="btn btn-accent" onclick="confirmSell()">💰 אשר מכירה</button>
+      <button class="btn btn-accent" onclick="confirmSell()">💰 אשר רכישה</button>
     </div>
   </div>
 </div>
@@ -734,16 +726,12 @@
       <input class="form-control" id="edit-sold-donor-number" placeholder="מספר תורם במערכת">
     </div>
     <div class="form-group">
-      <label>שם מתרים</label>
-      <input class="form-control" id="edit-sold-fundraiser-name" placeholder="שם המתרים">
-    </div>
-    <div class="form-group">
-      <label>תת קטגוריה (מתרים)</label>
-      <input class="form-control" id="edit-sold-fundraiser-sub" placeholder="תת קטגוריה">
+      <label>מקור התרומה</label>
+      <select class="form-control" id="edit-sold-source"></select>
     </div>
     <div class="form-group">
       <label>נוסח להנצחה <span class="req">*</span></label>
-      <input class="form-control" id="edit-sold-commemoration-names" placeholder="שם / שמות להנצחה">
+      <textarea class="form-control" id="edit-sold-commemoration-names" rows="3" placeholder="שם / שמות להנצחה" style="resize:vertical;"></textarea>
     </div>
     <div class="form-group">
       <label>מספר תרומה / קבלה</label>
@@ -786,9 +774,10 @@
     <div class="form-group">
       <label>סטאטוס פרויקט</label>
       <select class="form-control" id="project-status">
-        <option value="active">פעיל</option>
+        <option value="active">פתוח למכירה</option>
         <option value="completion">להשלמה</option>
         <option value="closed">סגור</option>
+        <option value="finished">הסתיים</option>
       </select>
     </div>
     <div class="form-group">
@@ -1309,9 +1298,10 @@ async function renderProjectsPage() {
     <span class="filter-label">סינון לפי סטאטוס:</span>
     <select class="filter-select" id="filter-project-status" onchange="filterProjectsGrid()">
       <option value="">כל הסטאטוסים</option>
-      <option value="active">● פעיל</option>
+      <option value="active">● פתוח למכירה</option>
       <option value="completion">🔵 בהשלמה</option>
       ${isAdmin ? '<option value="closed">⬤ סגור</option>' : ''}
+      ${isAdmin ? '<option value="finished">✓ הסתיים</option>' : ''}
     </select>
   </div>
   <div id="projects-grid-container"></div>`;
@@ -1382,8 +1372,9 @@ function renderProjectCard(id, p) {
   const stageColors = { 'תכנון': '#5C6BC0', 'בניה': '#F57C00', 'גימור': '#00897B', 'סיום': '#43A047' };
   const stageBadge = p.stage ? `<span style="display:inline-flex;align-items:center;padding:2px 10px;border-radius:20px;font-size:11px;font-weight:700;background:${stageColors[p.stage]||'var(--primary)'};color:white;margin-right:6px;">📍 ${esc(p.stage)}</span>` : '';
   const completionBadge = p.expectedCompletion ? `<span style="font-size:12px;color:var(--text-muted);">🗓 צפי: ${esc(p.expectedCompletion)}</span>` : '';
-  const statusTag = pStatus === 'active' ? '<span class="tag tag-success">● פעיל</span>' :
+  const statusTag = pStatus === 'active' ? '<span class="tag tag-success">● פתוח למכירה</span>' :
                     pStatus === 'completion' ? '<span class="tag tag-completion">🔵 להשלמה</span>' :
+                    pStatus === 'finished' ? '<span class="tag" style="background:#EDE7F6;color:#4527A0;">✓ הסתיים</span>' :
                     '<span class="tag tag-warning">⬤ סגור</span>';
   return `<div class="project-card" onclick="showPage('project-detail','${id}')">
     <div class="project-card-name">${esc(p.name)}</div>
@@ -1544,11 +1535,11 @@ function renderCommCard(id, c, blockedByWhole) {
     if (c.status === 'available') {
       actions = `<div class="comm-actions">
         <button class="btn btn-primary btn-sm" onclick="event.stopPropagation();openCapture('${id}')" style="flex:1;">✋ תפוס</button>
-        <button class="btn btn-accent btn-sm" onclick="event.stopPropagation();openDirectSell('${id}')" style="flex:1;">💰 מכור</button>
+        <button class="btn btn-accent btn-sm" onclick="event.stopPropagation();openDirectSell('${id}')" style="flex:1;">💰 רכישה</button>
       </div>`;
     } else if (c.status === 'captured' && isMine) {
       actions = `<div class="comm-actions">
-        <button class="btn btn-accent btn-sm" onclick="event.stopPropagation();openSell('${id}')">💰 מכור</button>
+        <button class="btn btn-accent btn-sm" onclick="event.stopPropagation();openSell('${id}')">💰 רכישה</button>
         <button class="btn btn-ghost btn-sm" onclick="event.stopPropagation();releaseCapture('${id}')">↩</button>
       </div>`;
     }
@@ -1587,8 +1578,9 @@ function openCapture(commId) {
   const defaultDate = new Date(Date.now() + appSettings.captureExpiryDays * 86400000);
   document.getElementById('capture-until-date').value = defaultDate.toISOString().split('T')[0];
   document.getElementById('capture-donor-name').value = '';
-  document.getElementById('capture-fundraiser-name').value = '';
   document.getElementById('capture-note').value = '';
+  const capSrc = document.getElementById('capture-source');
+  capSrc.innerHTML = '<option value="">— בחר מקור —</option>' + appSettings.donationSources.map(s => `<option value="${esc(s)}">${esc(s)}</option>`).join('');
   openModal('modal-capture');
 }
 
@@ -1605,7 +1597,7 @@ async function confirmCapture() {
   }
 
   const capturedDonorName = document.getElementById('capture-donor-name').value.trim() || null;
-  const captureFundraiserName = document.getElementById('capture-fundraiser-name').value.trim() || null;
+  const captureSource = document.getElementById('capture-source').value || null;
   const captureNote = document.getElementById('capture-note').value.trim() || null;
 
   closeModal('modal-capture');
@@ -1613,7 +1605,7 @@ async function confirmCapture() {
   if (!IS_CONFIGURED) {
     const c = allComms[commId];
     if (!c || c.status !== 'available') { showToast('ההנצחה כבר נתפסה', 'error'); renderCommsGrid(); return; }
-    allComms[commId] = { ...c, status: 'captured', capturedBy: currentUser.uid, capturedByName: currentUser.displayName, capturedAt: Date.now(), captureExpiry, capturedDonorName, captureFundraiserName, captureNote, captureExpiredAt: null };
+    allComms[commId] = { ...c, status: 'captured', capturedBy: currentUser.uid, capturedByName: currentUser.displayName, capturedAt: Date.now(), captureExpiry, capturedDonorName, captureSource, captureNote, captureExpiredAt: null };
     renderCommsGrid(); renderCommsStats();
     showToast('ההנצחה נתפסה בהצלחה! ✋', 'success');
     if (currentPage === 'search') runSearch();
@@ -1626,7 +1618,7 @@ async function confirmCapture() {
     await db.ref(`commemorations/${commId}`).transaction(current => {
       if (!current || current.status !== 'available') return;
       success = true;
-      return { ...current, status: 'captured', capturedBy: currentUser.uid, capturedByName: currentUser.displayName, capturedAt, captureExpiry, capturedDonorName, captureFundraiserName, captureNote, captureExpiredAt: null };
+      return { ...current, status: 'captured', capturedBy: currentUser.uid, capturedByName: currentUser.displayName, capturedAt, captureExpiry, capturedDonorName, captureSource, captureNote, captureExpiredAt: null };
     });
     if (success) {
       const c = allComms[commId] || {};
@@ -1693,14 +1685,14 @@ function openDirectSell(commId) {
     <span style="color:var(--accent);font-weight:700;">₪${(c.price||0).toLocaleString()}</span>
     <span style="background:#E3F2FD;color:#1565C0;border-radius:6px;padding:2px 8px;font-size:12px;font-weight:700;margin-right:8px;">⚡ מכירה ישירה</span>`;
   ['sell-donor-name','sell-donor-phone','sell-donor-email','sell-donor-number',
-   'sell-fundraiser-name','sell-fundraiser-sub','sell-donation-number','sell-commemoration-names','sell-notes'].forEach(id => {
+   'sell-donation-number','sell-commemoration-names','sell-notes'].forEach(id => {
     const el = document.getElementById(id);
     if (el) el.value = '';
   });
   document.getElementById('sell-payment-method').value = '';
   document.getElementById('sell-error').style.display = 'none';
   const sel = document.getElementById('sell-source');
-  sel.innerHTML = appSettings.donationSources.map(s => `<option value="${esc(s)}">${esc(s)}</option>`).join('');
+  sel.innerHTML = '<option value="">— בחר מקור —</option>' + appSettings.donationSources.map(s => `<option value="${esc(s)}">${esc(s)}</option>`).join('');
   openModal('modal-sell');
 }
 
@@ -1718,17 +1710,16 @@ function openSell(commId) {
     <strong>${esc(c.name)}</strong> &nbsp;·&nbsp; ${esc(allTypes[c.typeId]?.name||'')} &nbsp;·&nbsp;
     <span style="color:var(--accent);font-weight:700;">₪${(c.price||0).toLocaleString()}</span>`;
   ['sell-donor-name','sell-donor-phone','sell-donor-email','sell-donor-number',
-   'sell-fundraiser-name','sell-fundraiser-sub','sell-donation-number','sell-commemoration-names','sell-notes'].forEach(id => {
+   'sell-donation-number','sell-commemoration-names','sell-notes'].forEach(id => {
     const el = document.getElementById(id);
     if (el) el.value = '';
   });
   document.getElementById('sell-payment-method').value = '';
   document.getElementById('sell-error').style.display = 'none';
   const sel = document.getElementById('sell-source');
-  sel.innerHTML = appSettings.donationSources.map(s => `<option value="${esc(s)}">${esc(s)}</option>`).join('');
-  // Pre-fill fundraiser name from capture if available
-  if (c.captureFundraiserName) document.getElementById('sell-fundraiser-name').value = c.captureFundraiserName;
+  sel.innerHTML = '<option value="">— בחר מקור —</option>' + appSettings.donationSources.map(s => `<option value="${esc(s)}">${esc(s)}</option>`).join('');
   if (c.capturedDonorName) document.getElementById('sell-donor-name').value = c.capturedDonorName;
+  if (c.captureSource) document.getElementById('sell-source').value = c.captureSource;
   openModal('modal-sell');
 }
 
@@ -1737,8 +1728,6 @@ async function confirmSell() {
   const donorPhone = document.getElementById('sell-donor-phone').value.trim();
   const donorEmail = document.getElementById('sell-donor-email').value.trim();
   const donorNumber = document.getElementById('sell-donor-number').value.trim();
-  const fundraiserName = document.getElementById('sell-fundraiser-name').value.trim();
-  const fundraiserSubCategory = document.getElementById('sell-fundraiser-sub').value.trim();
   const donationNumber = document.getElementById('sell-donation-number').value.trim();
   const commemorationNames = document.getElementById('sell-commemoration-names').value.trim();
   const source = document.getElementById('sell-source').value;
@@ -1755,8 +1744,7 @@ async function confirmSell() {
   const soldAt = Date.now();
   const soldData = {
     status: 'sold', donorName, donorPhone, donorEmail: donorEmail || null,
-    donorNumber: donorNumber || null, fundraiserName: fundraiserName || null,
-    fundraiserSubCategory: fundraiserSubCategory || null,
+    donorNumber: donorNumber || null,
     donationNumber: donationNumber || null, commemorationNames, donationSource: source,
     paymentMethod: paymentMethod || null, saleNotes: saleNotes || null,
     soldBy: currentUser.uid, soldByName: currentUser.displayName, soldAt,
@@ -1792,7 +1780,7 @@ async function confirmSell() {
     // Log sale
     await db.ref('saleLog').push({
       commId, commName: current.name || '', projectId: current.projectId || currentProjectId || '',
-      donorName, donorPhone, fundraiserName: fundraiserName || null,
+      donorName, donorPhone,
       soldBy: currentUser.uid, soldByName: currentUser.displayName,
       soldAt, price: current.price || 0, directSell: isDirectSell
     });
@@ -1830,7 +1818,7 @@ function openCommDetail(commId) {
     html += `<hr class="divider">
       <div class="info-row"><span class="info-label">תפוס ע"י:</span><span>${esc(c.capturedByName||'')}</span></div>
       <div class="info-row"><span class="info-label">שם תורם:</span><span>${esc(c.capturedDonorName||'-')}</span></div>
-      <div class="info-row"><span class="info-label">שם מתרים:</span><span>${esc(c.captureFundraiserName||'-')}</span></div>
+      <div class="info-row"><span class="info-label">מקור:</span><span>${esc(c.captureSource||'-')}</span></div>
       ${c.captureNote ? `<div class="info-row"><span class="info-label">הערה:</span><span>${esc(c.captureNote)}</span></div>` : ''}
       <div class="info-row"><span class="info-label">פקיעה:</span><span>${c.captureExpiry ? formatDate(c.captureExpiry) : '-'}${c.captureExpiredAt ? ' <span style="color:var(--danger);font-weight:700;">⚠️ פג תוקף</span>' : ''}</span></div>`;
   } else if (c.status === 'sold') {
@@ -1839,9 +1827,7 @@ function openCommDetail(commId) {
       <div class="info-row"><span class="info-label">טלפון:</span><span>${esc(c.donorPhone||'')}</span></div>
       <div class="info-row"><span class="info-label">מייל:</span><span>${esc(c.donorEmail||'-')}</span></div>
       <div class="info-row"><span class="info-label">מס׳ תורם:</span><span>${esc(c.donorNumber||'-')}</span></div>
-      <div class="info-row"><span class="info-label">שם מתרים:</span><span>${esc(c.fundraiserName||'-')}</span></div>
-      ${c.fundraiserSubCategory ? `<div class="info-row"><span class="info-label">תת קטגוריה:</span><span>${esc(c.fundraiserSubCategory)}</span></div>` : ''}
-      <div class="info-row"><span class="info-label">נוסח הנצחה:</span><span>${esc(c.commemorationNames||'-')}</span></div>
+      <div class="info-row"><span class="info-label">נוסח הנצחה:</span><span style="white-space:pre-wrap;">${esc(c.commemorationNames||'-')}</span></div>
       <div class="info-row"><span class="info-label">מקור:</span><span>${esc(c.donationSource||'-')}</span></div>
       <div class="info-row"><span class="info-label">אמצעי תשלום:</span><span>${esc(c.paymentMethod||'-')}</span></div>
       <div class="info-row"><span class="info-label">מס׳ קבלה:</span><span>${esc(c.donationNumber||'-')}</span></div>
@@ -1910,9 +1896,9 @@ function openEditSold(commId) {
   document.getElementById('edit-sold-donor-phone').value = c.donorPhone || '';
   document.getElementById('edit-sold-donor-email').value = c.donorEmail || '';
   document.getElementById('edit-sold-donor-number').value = c.donorNumber || '';
-  document.getElementById('edit-sold-fundraiser-name').value = c.fundraiserName || c.captureFundraiserName || '';
-  document.getElementById('edit-sold-fundraiser-sub').value = c.fundraiserSubCategory || '';
   document.getElementById('edit-sold-commemoration-names').value = c.commemorationNames || '';
+  const editSrc = document.getElementById('edit-sold-source');
+  editSrc.innerHTML = '<option value="">— בחר מקור —</option>' + appSettings.donationSources.map(s => `<option value="${esc(s)}"${c.donationSource===s?' selected':''}>${esc(s)}</option>`).join('');
   document.getElementById('edit-sold-donation-number').value = c.donationNumber || '';
   document.getElementById('edit-sold-payment-method').value = c.paymentMethod || '';
   document.getElementById('edit-sold-notes').value = c.saleNotes || c.captureNote || '';
@@ -1927,14 +1913,12 @@ async function saveEditSold() {
     donorPhone: document.getElementById('edit-sold-donor-phone').value.trim() || null,
     donorEmail: document.getElementById('edit-sold-donor-email').value.trim() || null,
     donorNumber: document.getElementById('edit-sold-donor-number').value.trim() || null,
-    fundraiserName: document.getElementById('edit-sold-fundraiser-name').value.trim() || null,
-    fundraiserSubCategory: document.getElementById('edit-sold-fundraiser-sub').value.trim() || null,
     commemorationNames: document.getElementById('edit-sold-commemoration-names').value.trim() || null,
+    donationSource: document.getElementById('edit-sold-source').value || null,
     donationNumber: document.getElementById('edit-sold-donation-number').value.trim() || null,
     paymentMethod: document.getElementById('edit-sold-payment-method').value || null,
     saleNotes: document.getElementById('edit-sold-notes').value.trim() || null,
     capturedDonorName: document.getElementById('edit-sold-donor-name').value.trim() || null,
-    captureFundraiserName: document.getElementById('edit-sold-fundraiser-name').value.trim() || null,
   };
   if (!IS_CONFIGURED) {
     if (allComms[commId]) Object.assign(allComms[commId], updates);
@@ -2135,11 +2119,15 @@ async function renderSignsPage() {
     .join('');
 
   function getFilteredItems() {
-    const filterProject = document.getElementById('signs-project-filter')?.value || '';
+    const projectSearch = (document.getElementById('signs-project-search')?.value || '').trim().toLowerCase();
     const filterStatus  = document.getElementById('signs-status-filter')?.value  || '';
     return soldComms.filter(([,c]) => {
-      if (filterProject && c.projectId !== filterProject) return false;
+      if (projectSearch) {
+        const projName = (allProjects[c.projectId]?.name || '').toLowerCase();
+        if (!projName.includes(projectSearch)) return false;
+      }
       if (filterStatus === 'no-approval' &&  c.approvalChecked) return false;
+      if (filterStatus === 'no-design'   &&  c.sentToDesign)    return false;
       if (filterStatus === 'no-print'    &&  c.signPrinted)     return false;
       if (filterStatus === 'no-hang'     &&  c.signHung)        return false;
       return true;
@@ -2157,19 +2145,23 @@ async function renderSignsPage() {
     const statsHtml = `<div class="stats-row" style="margin-bottom:16px;">
       <div class="stat-chip"><span class="stat-icon">📋</span><div><div class="stat-num">${items.length}</div><div class="stat-lbl">סה"כ הנצחות</div></div></div>
       <div class="stat-chip"><span class="stat-icon" style="color:var(--primary)">✅</span><div><div class="stat-num" style="color:var(--primary)">${countApproved}</div><div class="stat-lbl">אושרו</div></div></div>
+      <div class="stat-chip"><span class="stat-icon" style="color:#7B1FA2">🎨</span><div><div class="stat-num" style="color:#7B1FA2">${items.filter(([,c]) => c.sentToDesign).length}</div><div class="stat-lbl">נשלחו לעיצוב</div></div></div>
       <div class="stat-chip"><span class="stat-icon" style="color:var(--accent)">🖨️</span><div><div class="stat-num" style="color:var(--accent)">${countPrinted}</div><div class="stat-lbl">הודפסו</div></div></div>
       <div class="stat-chip"><span class="stat-icon" style="color:var(--success)">🪧</span><div><div class="stat-num" style="color:var(--success)">${countHung}</div><div class="stat-lbl">נתלו</div></div></div>
     </div>`;
 
+    const isAdmin = currentUser.role === 'admin';
     const rows = items.map(([id,c]) => {
       const proj = allProjects[c.projectId];
+      const locked = !!c.sentToDesign && !isAdmin;
       const chk = (field, label, disabled) => {
         const isChecked = !!c[field];
-        const disAttr = disabled ? 'disabled' : '';
+        const disAttr = (disabled || locked) ? 'disabled' : '';
+        const ts = c[field+'At'] ? `<div style="font-size:10px;color:var(--text-muted);margin-top:2px;">${new Date(c[field+'At']).toLocaleDateString('he-IL')}<br>${esc(c[field+'By']||'')}</div>` : '';
         return `<td style="text-align:center;" onclick="event.stopPropagation()">
           <input type="checkbox" ${isChecked ? 'checked' : ''} ${disAttr}
-            style="width:18px;height:18px;accent-color:var(--primary);cursor:${disabled?'not-allowed':'pointer'};"
-            onchange="signsUpdateField('${id}','${field}',this.checked,true)" title="${label}">
+            style="width:18px;height:18px;accent-color:var(--primary);cursor:${(disabled||locked)?'not-allowed':'pointer'};"
+            onchange="signsUpdateField('${id}','${field}',this.checked,true)" title="${label}">${ts}
         </td>`;
       };
       const notApproved = !c.approvalChecked;
@@ -2189,6 +2181,7 @@ async function renderSignsPage() {
         </td>
         <td style="font-size:12px;">${esc(c.commemorationNames||'-')}</td>
         ${chk('approvalChecked','אישור הנצחה', false)}
+        ${chk('sentToDesign','נשלח לעיצוב', !c.approvalChecked)}
         ${chk('signPrinted','הדפסת שלט', notApproved)}
         ${chk('signHung','תליית שלט', notPrinted)}
         <td style="font-size:12px;" onclick="event.stopPropagation()">${esc(c.saleNotes||'-')}</td>
@@ -2200,6 +2193,7 @@ async function renderSignsPage() {
         <thead><tr>
           <th>הנצחה</th><th>מקווה</th><th>תורם</th><th>נוסח הנצחה</th>
           <th style="text-align:center;">✅ אישור</th>
+          <th style="text-align:center;">🎨 עיצוב</th>
           <th style="text-align:center;">🖨️ הדפסה</th>
           <th style="text-align:center;">🪧 תליה</th>
           <th>הערות</th>
@@ -2211,15 +2205,13 @@ async function renderSignsPage() {
 
   content.innerHTML = `
     <div class="filters-bar" style="margin-bottom:20px;flex-wrap:wrap;gap:12px;align-items:center;">
-      <span class="filter-label">מקווה:</span>
-      <select class="filter-select" id="signs-project-filter" onchange="signsApplyFilter()">
-        <option value="">כל המקוואות</option>
-        ${projectOptions}
-      </select>
+      <span class="filter-label">חיפוש מקווה:</span>
+      <input class="filter-select" id="signs-project-search" placeholder="הקלד שם מקווה..." style="min-width:160px;" oninput="signsApplyFilter()">
       <span class="filter-label">סינון:</span>
       <select class="filter-select" id="signs-status-filter" onchange="signsApplyFilter()">
         <option value="">הכל</option>
         <option value="no-approval">❌ אין אישור</option>
+        <option value="no-design">❌ אין עיצוב</option>
         <option value="no-print">❌ אין הדפסה</option>
         <option value="no-hang">❌ אין תליה</option>
       </select>
@@ -2297,6 +2289,13 @@ async function signsExportFiltered() {
 
 async function signsUpdateField(commId, field, value, refreshTable) {
   const updates = { [field]: value };
+  if (value) {
+    updates[field + 'At'] = Date.now();
+    updates[field + 'By'] = currentUser.displayName || currentUser.username || '';
+  } else {
+    updates[field + 'At'] = null;
+    updates[field + 'By'] = null;
+  }
   if (window._signsComms && window._signsComms[commId]) {
     Object.assign(window._signsComms[commId], updates);
   }
@@ -2449,8 +2448,8 @@ function renderDrawerView() {
   if (!p) return;
 
   const pStatus = getProjectStatus(p);
-  const statusLabel = pStatus === 'active' ? 'פעיל' : pStatus === 'completion' ? 'להשלמה' : 'סגור';
-  const statusClass = pStatus === 'active' ? 'tag-success' : pStatus === 'completion' ? 'tag-completion' : 'tag-warning';
+  const statusLabel = pStatus === 'active' ? 'פתוח למכירה' : pStatus === 'completion' ? 'להשלמה' : pStatus === 'finished' ? 'הסתיים' : 'סגור';
+  const statusClass = pStatus === 'active' ? 'tag-success' : pStatus === 'completion' ? 'tag-completion' : pStatus === 'finished' ? 'tag-completion' : 'tag-warning';
   const stageColors = { 'תכנון': '#5C6BC0', 'בניה': '#F57C00', 'גימור': '#00897B', 'סיום': '#43A047' };
   const priorityLabels = { 1: 'גבוהה מאוד', 2: 'גבוהה', 3: 'בינונית', 4: 'נמוכה', 5: 'נמוכה מאוד' };
 
@@ -2554,9 +2553,10 @@ function startDrawerEdit() {
     <div class="form-group">
       <label>סטאטוס פרויקט</label>
       <select class="form-control" id="drawer-status">
-        <option value="active"${pStatus==='active'?' selected':''}>פעיל</option>
+        <option value="active"${pStatus==='active'?' selected':''}>פתוח למכירה</option>
         <option value="completion"${pStatus==='completion'?' selected':''}>להשלמה</option>
         <option value="closed"${pStatus==='closed'?' selected':''}>סגור</option>
+        <option value="finished"${pStatus==='finished'?' selected':''}>הסתיים</option>
       </select>
     </div>
     <div class="form-group">
@@ -3333,17 +3333,19 @@ function renderSearchPage() {
         <div class="filter-label" style="margin-bottom:6px;">סטאטוס פרויקט</div>
         <select class="filter-select" id="search-project-status" onchange="runSearch()">
           <option value="">כל הסטאטוסים</option>
-          <option value="active">● פעיל</option>
+          <option value="active">● פתוח למכירה</option>
           <option value="completion">🔵 בהשלמה</option>
           <option value="closed">⬤ סגור</option>
+          <option value="finished">✓ הסתיים</option>
         </select>
       </div>
       <div>
         <div class="filter-label" style="margin-bottom:6px;">סוג הנצחה</div>
-        <select class="filter-select" id="search-type" onchange="runSearch()">
-          <option value="">כל הסוגים</option>
-          ${typeOptions}
-        </select>
+        <input class="filter-select" id="search-type-text" list="search-type-list"
+          placeholder="הקלד לסינון..." style="min-width:180px;" oninput="debounceSearch()">
+        <datalist id="search-type-list">
+          ${Object.entries(allTypes).map(([id,t]) => `<option value="${esc(t.name)}" data-id="${id}">`).join('')}
+        </datalist>
       </div>
       <div>
         <div class="filter-label" style="margin-bottom:6px;">מיון</div>
@@ -3375,7 +3377,8 @@ function debounceSearch() {
 async function runSearch() {
   const projectNameQuery = (document.getElementById('search-project-name')?.value || '').trim().toLowerCase();
   const projectStatusFilter = document.getElementById('search-project-status')?.value || '';
-  const typeFilter = document.getElementById('search-type')?.value || '';
+  const typeTextQuery = (document.getElementById('search-type-text')?.value || '').trim().toLowerCase();
+  const typeFilter = typeTextQuery ? Object.entries(allTypes).find(([,t]) => t.name.toLowerCase() === typeTextQuery)?.[0] || '__nomatch__' : '';
   const sortMode = document.getElementById('search-sort')?.value || 'default';
   const resultsEl = document.getElementById('search-results');
   if (!resultsEl) return;
@@ -3515,11 +3518,11 @@ function renderSearchCommCard(id, c) {
     if (c.status === 'available') {
       actions = `<div class="comm-actions">
         <button class="btn btn-primary btn-sm" onclick="event.stopPropagation();openCapture('${id}')" style="flex:1;">✋ תפוס</button>
-        <button class="btn btn-accent btn-sm" onclick="event.stopPropagation();openDirectSell('${id}')" style="flex:1;">💰 מכור</button>
+        <button class="btn btn-accent btn-sm" onclick="event.stopPropagation();openDirectSell('${id}')" style="flex:1;">💰 רכישה</button>
       </div>`;
     } else if (c.status === 'captured' && isMine) {
       actions = `<div class="comm-actions">
-        <button class="btn btn-accent btn-sm" onclick="event.stopPropagation();openSell('${id}')">💰 מכור</button>
+        <button class="btn btn-accent btn-sm" onclick="event.stopPropagation();openSell('${id}')">💰 רכישה</button>
         <button class="btn btn-ghost btn-sm" onclick="event.stopPropagation();releaseCapture('${id}')">↩</button>
       </div>`;
     }
