@@ -575,6 +575,9 @@
           <span class="nav-icon">⚠️</span> לטיפול
           <span id="nav-expired-badge" style="display:none;background:var(--danger);color:white;border-radius:10px;font-size:11px;font-weight:700;padding:1px 7px;margin-right:auto;"></span>
         </div>
+        <div class="nav-item" onclick="showPage('source-report')" data-page="source-report">
+          <span class="nav-icon">📊</span> דוח מקורות
+        </div>
         <div class="nav-item" onclick="showPage('export-excel')" data-page="export-excel">
           <span class="nav-icon">📥</span> ייצוא לאקסל
         </div>
@@ -670,8 +673,12 @@
       <input class="form-control" id="sell-donor-number" placeholder="מספר תורם במערכת">
     </div>
     <div class="form-group">
-      <label>נוסח להנצחה <span class="req">*</span></label>
-      <textarea class="form-control" id="sell-commemoration-names" rows="3" placeholder="שם / שמות להנצחה (חובה)" style="resize:vertical;"></textarea>
+      <label>נוסח להנצחה</label>
+      <textarea class="form-control" id="sell-commemoration-names" rows="3" placeholder="שם / שמות להנצחה" style="resize:vertical;"></textarea>
+      <label style="display:flex;align-items:center;gap:8px;cursor:pointer;margin-top:8px;font-size:13px;">
+        <input type="checkbox" id="sell-wording-pending" onchange="document.getElementById('sell-commemoration-names').required=!this.checked">
+        <span style="color:#E65100;font-weight:600;">⏳ נוסח יימסר בהמשך</span>
+      </label>
     </div>
     <div class="form-group">
       <label>מקור התרומה <span class="req">*</span></label>
@@ -852,6 +859,16 @@
       <label>מחיר (₪) *</label>
       <input class="form-control" id="comm-price" type="number" min="0" placeholder="0">
     </div>
+    <div class="form-group" id="comm-units-group">
+      <label style="display:flex;align-items:center;gap:8px;cursor:pointer;">
+        <input type="checkbox" id="comm-has-units" onchange="toggleUnitsMode()">
+        <strong>פריט מחולק ליחידות</strong>
+        <span style="font-size:12px;color:var(--text-muted);">— יצור תת-פריטים (לדוג': בור × 28)</span>
+      </label>
+      <div id="comm-units-input" style="display:none;margin-top:8px;">
+        <input class="form-control" id="comm-units-count" type="number" min="2" max="200" value="2" placeholder="מספר יחידות" style="max-width:160px;">
+      </div>
+    </div>
     <div class="form-group">
       <label>הערות</label>
       <textarea class="form-control" id="comm-notes" rows="3" placeholder="הערות נוספות (רשות)" style="resize:vertical;"></textarea>
@@ -962,6 +979,7 @@
 <script src="https://cdn.sheetjs.com/xlsx-latest/package/dist/xlsx.full.min.js"></script>
 
 <!-- Firebase SDK v9 compat -->
+<script src="https://cdn.jsdelivr.net/npm/@emailjs/browser@4/dist/email.min.js"></script>
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-database-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-storage-compat.js"></script>
@@ -993,7 +1011,11 @@ let currentUser = null;
 let appSettings = {
   captureExpiryDays: 3,
   donationSources: ["מוקד מוריה", "מוקד בני ברק", "אירועים מוריה", "אחר", "מתרים עקיבא", "מתרים הרב חיים לוי", "מתרים אנגליה"],
-  projectStages: ["תכנון", "בניה", "גימור", "סיום"]
+  projectStages: ["תכנון", "בניה", "גימור", "סיום"],
+  emailjs: { serviceId: '', templateId: '', publicKey: '' },
+  sourceEmails: {},
+  wordingReminderDays: 14,
+  wordingReminderTemplate: 'שלום,\n\nהנצחה "{{comm_name}}" בפרויקט {{project_name}} נרכשה ב-{{sale_date}} ועדיין אין נוסח להנצחה.\n\nאנא עדכנו את הנוסח במערכת.\n\nתודה'
 };
 let allTypes = {};
 let allProjects = {};
@@ -1173,6 +1195,7 @@ async function startApp() {
   if (currentUser.role === 'admin') {
     showPage('admin-projects');
     openExpiredCapturesModal();
+    setTimeout(checkWordingReminders, 3000);
   } else if (currentUser.role === 'viewer') {
     showPage('search');
   } else {
@@ -1187,8 +1210,13 @@ async function loadSettings() {
     appSettings.captureExpiryDays = s.captureExpiryDays || 3;
     appSettings.donationSources = s.donationSources || appSettings.donationSources;
     appSettings.projectStages = s.projectStages || appSettings.projectStages;
+    if (s.emailjs) appSettings.emailjs = s.emailjs;
+    if (s.sourceEmails) appSettings.sourceEmails = s.sourceEmails;
+    if (s.wordingReminderDays) appSettings.wordingReminderDays = s.wordingReminderDays;
+    if (s.wordingReminderTemplate) appSettings.wordingReminderTemplate = s.wordingReminderTemplate;
+    if (appSettings.emailjs?.publicKey) emailjs.init(appSettings.emailjs.publicKey);
   } else {
-    await db.ref('settings').set(appSettings);
+    await db.ref('settings').set({ captureExpiryDays: appSettings.captureExpiryDays, donationSources: appSettings.donationSources, projectStages: appSettings.projectStages });
   }
 }
 
@@ -1295,6 +1323,7 @@ function showPage(page, projectId) {
     'all-comms': renderAllCommsPage,
     'capture-history': renderCaptureHistoryPage,
     'sale-history': renderSaleHistoryPage,
+    'source-report': renderSourceReportPage,
     'signs-management': renderSignsPage,
     'export-excel': renderExportExcelPage,
     'about': renderAboutPage,
@@ -1753,6 +1782,8 @@ function openSell(commId) {
   });
   document.getElementById('sell-payment-method').value = '';
   document.getElementById('sell-error').style.display = 'none';
+  const wpEl = document.getElementById('sell-wording-pending');
+  if (wpEl) wpEl.checked = false;
   const sel = document.getElementById('sell-source');
   sel.innerHTML = '<option value="">— בחר מקור —</option>' + appSettings.donationSources.map(s => `<option value="${esc(s)}">${esc(s)}</option>`).join('');
   if (c.capturedDonorName) document.getElementById('sell-donor-name').value = c.capturedDonorName;
@@ -1775,16 +1806,18 @@ async function confirmSell() {
   const errEl = document.getElementById('sell-error');
   errEl.style.display = 'none';
 
+  const wordingPending = document.getElementById('sell-wording-pending')?.checked || false;
   if (!donorName) { errEl.textContent = 'נא למלא שם תורם'; errEl.style.display = 'block'; return; }
   if (!donorPhone) { errEl.textContent = 'נא למלא טלפון תורם'; errEl.style.display = 'block'; return; }
-  if (!commemorationNames) { errEl.textContent = 'נא למלא נוסח להנצחה'; errEl.style.display = 'block'; return; }
+  if (!commemorationNames && !wordingPending) { errEl.textContent = 'נא למלא נוסח להנצחה או לסמן "נוסח יימסר בהמשך"'; errEl.style.display = 'block'; return; }
 
   const commId = pendingSellId;
   const soldAt = Date.now();
   const soldData = {
     status: 'sold', donorName, donorPhone, donorEmail: donorEmail || null,
     donorNumber: donorNumber || null,
-    donationNumber: donationNumber || null, commemorationNames, donationSource: source,
+    donationNumber: donationNumber || null, commemorationNames: commemorationNames || null, donationSource: source,
+    wordingPending: wordingPending || null, wordingPendingDate: wordingPending ? Date.now() : null,
     secondaryFundraiser: secondaryFundraiser || null,
     paymentMethod: paymentMethod || null, saleNotes: saleNotes || null,
     soldBy: currentUser.uid, soldByName: currentUser.displayName, soldAt,
@@ -2152,6 +2185,60 @@ async function renderSaleHistoryPage() {
     '</div>' +
     '<div class="table-wrap"><table class="data-table history-table"><thead><tr><th>הנצחה</th><th>פרויקט</th><th>תורם</th><th>טלפון</th><th>מתרים</th><th>מחיר</th><th>נמכר ע"י</th><th>תאריך</th><th>סוג</th></tr></thead><tbody>' +
     (rows || '<tr><td colspan="9" style="text-align:center;padding:40px;">אין מכירות</td></tr>') + '</tbody></table></div>';
+}
+
+// ============================================================
+//  SOURCE REPORT PAGE
+// ============================================================
+async function renderSourceReportPage() {
+  setTopbar('דוח מקורות תרומה', `<button class="btn btn-accent btn-sm" onclick="sendWordingReminders()">✉️ שלח תזכורות נוסח</button>`);
+  const content = document.getElementById('page-content');
+  if (!IS_CONFIGURED) { content.innerHTML = '<div class="empty-state"><div class="empty-icon">📊</div><h3>זמין רק במצב מחובר</h3></div>'; return; }
+  content.innerHTML = '<div class="empty-state"><div class="empty-icon">⏳</div><h3>טוען...</h3></div>';
+
+  const snap = await db.ref('commemorations').once('value');
+  const bySource = {};
+  const noSource = { label: '— ללא מקור —', sold: 0, captured: 0, total: 0, amount: 0, pending: 0 };
+
+  if (snap.exists()) snap.forEach(c => {
+    const v = c.val();
+    if (v.status !== 'sold' && v.status !== 'captured') return;
+    const src = v.donationSource || v.captureSource || null;
+    if (!src) {
+      if (v.status === 'sold') { noSource.sold++; noSource.amount += v.price || 0; if (v.wordingPending) noSource.pending++; }
+      if (v.status === 'captured') noSource.captured++;
+      noSource.total++;
+      return;
+    }
+    if (!bySource[src]) bySource[src] = { label: src, sold: 0, captured: 0, total: 0, amount: 0, pending: 0 };
+    bySource[src].total++;
+    if (v.status === 'sold') { bySource[src].sold++; bySource[src].amount += v.price || 0; if (v.wordingPending) bySource[src].pending++; }
+    if (v.status === 'captured') bySource[src].captured++;
+  });
+
+  const rows = [...Object.values(bySource).sort((a,b) => b.amount - a.amount), ...(noSource.total ? [noSource] : [])];
+  const totalAmount = rows.reduce((s,r) => s + r.amount, 0);
+  const totalSold = rows.reduce((s,r) => s + r.sold, 0);
+
+  const tableRows = rows.map(r => `<tr>
+    <td><strong>${esc(r.label)}</strong></td>
+    <td style="text-align:center;"><strong style="color:var(--accent);">${r.sold}</strong></td>
+    <td style="text-align:center;color:#FF9800;">${r.captured}</td>
+    <td style="text-align:center;font-weight:700;color:var(--accent);">₪${r.amount.toLocaleString()}</td>
+    <td style="text-align:center;">${totalAmount ? Math.round(r.amount/totalAmount*100) : 0}%</td>
+    ${r.pending > 0 ? `<td style="text-align:center;color:#E65100;font-weight:700;">⏳ ${r.pending}</td>` : '<td style="text-align:center;color:var(--text-muted);">—</td>'}
+  </tr>`).join('');
+
+  content.innerHTML = `
+    <div class="stats-row" style="margin-bottom:20px;">
+      <div class="stat-chip"><span class="stat-icon">💰</span><div><div class="stat-num" style="color:var(--accent);">₪${totalAmount.toLocaleString()}</div><div class="stat-lbl">סה"כ הכנסות</div></div></div>
+      <div class="stat-chip"><span class="stat-icon">🏷️</span><div><div class="stat-num">${totalSold}</div><div class="stat-lbl">סה"כ רכישות</div></div></div>
+      <div class="stat-chip"><span class="stat-icon">⏳</span><div><div class="stat-num" style="color:#E65100;">${rows.reduce((s,r)=>s+r.pending,0)}</div><div class="stat-lbl">נוסח ממתין</div></div></div>
+    </div>
+    <div class="table-wrap"><table class="data-table">
+      <thead><tr><th>מקור תרומה</th><th style="text-align:center;">נרכשו</th><th style="text-align:center;">תפוסים</th><th style="text-align:center;">סכום</th><th style="text-align:center;">% מסה"כ</th><th style="text-align:center;">נוסח ממתין</th></tr></thead>
+      <tbody>${tableRows || '<tr><td colspan="6" style="text-align:center;padding:40px;">אין נתונים</td></tr>'}</tbody>
+    </table></div>`;
 }
 
 // ============================================================
@@ -2992,6 +3079,12 @@ function toggleWholeProjectMode() {
   if (isWhole) document.getElementById('comm-type-name').value = 'כל הפרויקט';
 }
 
+function toggleUnitsMode() {
+  const checked = document.getElementById('comm-has-units')?.checked;
+  const inp = document.getElementById('comm-units-input');
+  if (inp) inp.style.display = checked ? '' : 'none';
+}
+
 function fillCommPrice() {
   const typeId = document.getElementById('comm-type').value;
   if (!typeId) return;
@@ -3035,19 +3128,36 @@ async function saveComm() {
 
   const typeId = document.getElementById('comm-type').value;
   if (!typeId) { showToast('נא לבחור סוג הנצחה', 'error'); return; }
-  const alreadyExists = Object.values(allComms).some(c => c.projectId === editingCommProjectId && c.typeId === typeId);
-  if (alreadyExists) { showToast('סוג הנצחה זה כבר קיים בפרויקט', 'error'); return; }
-  const name = allTypes[typeId]?.name || '';
 
-  const data = { projectId: editingCommProjectId, typeId, name, price, notes: notes || null, status: 'available', capturedBy: null, capturedByName: null, capturedAt: null, captureExpiry: null, donorName: null, donorPhone: null, donationNumber: null, donationSource: null, soldBy: null, soldByName: null, soldAt: null };
+  const hasUnits = document.getElementById('comm-has-units')?.checked;
+  const unitsCount = hasUnits ? (parseInt(document.getElementById('comm-units-count')?.value) || 1) : 1;
 
-  if (!IS_CONFIGURED) {
-    allComms['c'+Date.now()] = data;
-    closeModal('modal-comm'); renderAdminProjectCommsPage(); return;
+  if (!hasUnits) {
+    const alreadyExists = Object.values(allComms).some(c => c.projectId === editingCommProjectId && c.typeId === typeId && !c.parentGroupId);
+    if (alreadyExists) { showToast('סוג הנצחה זה כבר קיים בפרויקט', 'error'); return; }
   }
-  await db.ref('commemorations').push(data);
-  closeModal('modal-comm'); renderAdminProjectCommsPage();
-  showToast('ההנצחה נוספה', 'success');
+
+  const baseName = allTypes[typeId]?.name || '';
+  const baseData = { projectId: editingCommProjectId, typeId, price, notes: notes || null, status: 'available', capturedBy: null, capturedByName: null, capturedAt: null, captureExpiry: null, donorName: null, donorPhone: null, donationNumber: null, donationSource: null, soldBy: null, soldByName: null, soldAt: null };
+
+  if (unitsCount <= 1) {
+    const data = { ...baseData, name: baseName };
+    if (!IS_CONFIGURED) { allComms['c'+Date.now()] = data; closeModal('modal-comm'); renderAdminProjectCommsPage(); return; }
+    await db.ref('commemorations').push(data);
+    closeModal('modal-comm'); renderAdminProjectCommsPage();
+    showToast('ההנצחה נוספה', 'success');
+    return;
+  }
+
+  const groupId = 'grp_' + Date.now();
+  closeModal('modal-comm');
+  for (let i = 1; i <= unitsCount; i++) {
+    const data = { ...baseData, name: `${baseName} — יחידה ${i}`, parentGroupId: groupId, unitIndex: i, totalUnits: unitsCount };
+    if (IS_CONFIGURED) await db.ref('commemorations').push(data);
+    else allComms['c'+(Date.now()+i)] = data;
+  }
+  renderAdminProjectCommsPage();
+  showToast(`✅ נוצרו ${unitsCount} יחידות של "${baseName}"`, 'success');
 }
 
 async function setProjectTypePrice(typeId, priceStr) {
@@ -3332,6 +3442,46 @@ function renderAdminSettingsPage() {
         <button class="btn btn-ghost" onclick="addSource()">➕ הוסף</button>
       </div>
       <button class="btn btn-primary" style="margin-top:16px;" onclick="saveSources()">שמור מקורות</button>
+    </div>
+    <div class="card">
+      <div class="card-title">✉️ מיילים לפי מקור תרומה</div>
+      <p style="color:var(--text-muted);font-size:13px;margin-bottom:12px;">כתובת המייל של האחראי על כל מקור — יקבל תזכורת על נוסח ממתין.</p>
+      <div id="source-emails-list">
+        ${appSettings.donationSources.map(s => `
+          <div style="display:flex;align-items:center;gap:10px;margin-bottom:8px;">
+            <span style="min-width:160px;font-size:13px;">${esc(s)}</span>
+            <input class="form-control" type="email" value="${esc(appSettings.sourceEmails?.[s]||'')}" id="src-email-${btoa(encodeURIComponent(s)).replace(/=/g,'')}" placeholder="email@example.com" dir="ltr" style="max-width:260px;">
+          </div>`).join('')}
+      </div>
+      <button class="btn btn-primary" style="margin-top:12px;" onclick="saveSourceEmails()">שמור מיילים</button>
+    </div>
+    <div class="card">
+      <div class="card-title">📧 הגדרות EmailJS</div>
+      <p style="color:var(--text-muted);font-size:13px;margin-bottom:12px;">
+        לשליחת מיילים אוטומטיים — <a href="https://www.emailjs.com" target="_blank">צור חשבון EmailJS</a>, הגדר Service + Template, והזן את הפרטים כאן.
+      </p>
+      <div class="form-group">
+        <label>Service ID</label>
+        <input class="form-control" id="ejs-service-id" value="${esc(appSettings.emailjs?.serviceId||'')}" placeholder="service_xxxxxxx" dir="ltr" style="max-width:300px;">
+      </div>
+      <div class="form-group">
+        <label>Template ID</label>
+        <input class="form-control" id="ejs-template-id" value="${esc(appSettings.emailjs?.templateId||'')}" placeholder="template_xxxxxxx" dir="ltr" style="max-width:300px;">
+      </div>
+      <div class="form-group">
+        <label>Public Key</label>
+        <input class="form-control" id="ejs-public-key" value="${esc(appSettings.emailjs?.publicKey||'')}" placeholder="xxxxxxxxxxxxxxxxxxxx" dir="ltr" style="max-width:300px;">
+      </div>
+      <div class="form-group">
+        <label>תבנית תזכורת (ימים)</label>
+        <input class="form-control" type="number" id="ejs-reminder-days" value="${appSettings.wordingReminderDays||14}" min="1" max="90" style="max-width:120px;">
+      </div>
+      <div class="form-group">
+        <label>נוסח המייל</label>
+        <textarea class="form-control" id="ejs-template-text" rows="5" style="resize:vertical;">${esc(appSettings.wordingReminderTemplate||'')}</textarea>
+        <div style="font-size:12px;color:var(--text-muted);margin-top:4px;">משתנים: {{comm_name}}, {{project_name}}, {{donor_name}}, {{sale_date}}</div>
+      </div>
+      <button class="btn btn-primary" onclick="saveEmailjsSettings()">שמור הגדרות מייל</button>
     </div>`;
 }
 
@@ -3380,6 +3530,82 @@ async function saveSources() {
   appSettings.donationSources = sources;
   if (IS_CONFIGURED) await db.ref('settings/donationSources').set(sources);
   showToast('מקורות התרומה נשמרו', 'success');
+}
+
+async function saveSourceEmails() {
+  const emails = {};
+  appSettings.donationSources.forEach(s => {
+    const key = btoa(encodeURIComponent(s)).replace(/=/g,'');
+    const el = document.getElementById('src-email-' + key);
+    if (el && el.value.trim()) emails[s] = el.value.trim();
+  });
+  appSettings.sourceEmails = emails;
+  if (IS_CONFIGURED) await db.ref('settings/sourceEmails').set(emails);
+  showToast('מיילים נשמרו ✅', 'success');
+}
+
+async function saveEmailjsSettings() {
+  const serviceId = document.getElementById('ejs-service-id').value.trim();
+  const templateId = document.getElementById('ejs-template-id').value.trim();
+  const publicKey = document.getElementById('ejs-public-key').value.trim();
+  const reminderDays = parseInt(document.getElementById('ejs-reminder-days').value) || 14;
+  const templateText = document.getElementById('ejs-template-text').value;
+  appSettings.emailjs = { serviceId, templateId, publicKey };
+  appSettings.wordingReminderDays = reminderDays;
+  appSettings.wordingReminderTemplate = templateText;
+  if (IS_CONFIGURED) {
+    await db.ref('settings/emailjs').set({ serviceId, templateId, publicKey });
+    await db.ref('settings/wordingReminderDays').set(reminderDays);
+    await db.ref('settings/wordingReminderTemplate').set(templateText);
+  }
+  if (publicKey) emailjs.init(publicKey);
+  showToast('הגדרות מייל נשמרו ✅', 'success');
+}
+
+async function sendWordingReminders() {
+  const { serviceId, templateId, publicKey } = appSettings.emailjs || {};
+  if (!serviceId || !templateId || !publicKey) {
+    showToast('נא להגדיר EmailJS בהגדרות המערכת', 'error'); return;
+  }
+  emailjs.init(publicKey);
+  const cutoff = Date.now() - (appSettings.wordingReminderDays || 14) * 86400000;
+  const snap = await db.ref('commemorations').once('value');
+  let sent = 0;
+  const promises = [];
+  if (snap.exists()) snap.forEach(c => {
+    const v = c.val();
+    if (!v.wordingPending || !v.soldAt || v.soldAt > cutoff) return;
+    const src = v.donationSource || v.captureSource || '';
+    const toEmail = appSettings.sourceEmails?.[src];
+    if (!toEmail) return;
+    const proj = allProjects[v.projectId];
+    const body = (appSettings.wordingReminderTemplate || '')
+      .replace(/{{comm_name}}/g, v.name || '')
+      .replace(/{{project_name}}/g, proj?.name || '')
+      .replace(/{{donor_name}}/g, v.donorName || '')
+      .replace(/{{sale_date}}/g, v.soldAt ? new Date(v.soldAt).toLocaleDateString('he-IL') : '');
+    promises.push(
+      emailjs.send(serviceId, templateId, { to_email: toEmail, subject: `תזכורת: נוסח חסר להנצחה "${v.name}"`, message: body })
+        .then(() => sent++)
+    );
+  });
+  await Promise.allSettled(promises);
+  showToast(sent > 0 ? `✅ נשלחו ${sent} תזכורות` : 'אין נוסחים ממתינים לשליחה', sent > 0 ? 'success' : 'warning');
+}
+
+async function checkWordingReminders() {
+  if (!IS_CONFIGURED || currentUser?.role !== 'admin') return;
+  const { serviceId, publicKey } = appSettings.emailjs || {};
+  if (!serviceId || !publicKey) return;
+  const cutoff = Date.now() - (appSettings.wordingReminderDays || 14) * 86400000;
+  try {
+    const snap = await db.ref('commemorations').orderByChild('wordingPending').equalTo(true).once('value');
+    let overdueCount = 0;
+    if (snap.exists()) snap.forEach(c => { const v = c.val(); if (v.soldAt && v.soldAt <= cutoff) overdueCount++; });
+    if (overdueCount > 0) {
+      showToast(`⚠️ ${overdueCount} הנצחות עם נוסח ממתין מעל ${appSettings.wordingReminderDays} יום`, 'warning', 6000);
+    }
+  } catch(e) {}
 }
 
 // ============================================================
@@ -3803,13 +4029,13 @@ function closeSidebar() {
   document.getElementById('sidebar-overlay').classList.remove('open');
 }
 
-function showToast(msg, type = '') {
+function showToast(msg, type = '', duration = 3500) {
   const container = document.getElementById('toast-container');
   const toast = document.createElement('div');
   toast.className = 'toast ' + type;
   toast.textContent = msg;
   container.appendChild(toast);
-  setTimeout(() => toast.remove(), 3500);
+  setTimeout(() => toast.remove(), duration);
 }
 
 function formatDate(ts) {
