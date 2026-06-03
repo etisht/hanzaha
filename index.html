@@ -535,6 +535,12 @@
           <span class="nav-icon">🔍</span> חיפוש הנצחות
         </div>
       </div>
+      <div id="nav-viewer-section" style="display:none">
+        <div class="nav-section-title">צפייה</div>
+        <div class="nav-item active" onclick="showPage('search')" data-page="search">
+          <span class="nav-icon">🔍</span> חיפוש הנצחות
+        </div>
+      </div>
       <div id="nav-admin-section" style="display:none">
         <div class="nav-section-title">אדמין</div>
         <div class="nav-item" onclick="showPage('admin-projects')" data-page="admin-projects">
@@ -622,6 +628,10 @@
       <select class="form-control" id="capture-source"></select>
     </div>
     <div class="form-group">
+      <label>שם טלפנית</label>
+      <input class="form-control" id="capture-operator-name" placeholder="שם הטלפנית שטיפלה (רשות)">
+    </div>
+    <div class="form-group">
       <label>הערה</label>
       <textarea class="form-control" id="capture-note" rows="2" placeholder="הערה (רשות)" style="resize:vertical;"></textarea>
     </div>
@@ -666,6 +676,10 @@
     <div class="form-group">
       <label>מקור התרומה <span class="req">*</span></label>
       <select class="form-control" id="sell-source"></select>
+    </div>
+    <div class="form-group">
+      <label>מתרים משני</label>
+      <input class="form-control" id="sell-secondary-fundraiser" placeholder="שם מתרים משני (רשות)">
     </div>
     <div class="form-group">
       <label>אמצעי תשלום</label>
@@ -728,6 +742,10 @@
     <div class="form-group">
       <label>מקור התרומה</label>
       <select class="form-control" id="edit-sold-source"></select>
+    </div>
+    <div class="form-group">
+      <label>מתרים משני</label>
+      <input class="form-control" id="edit-sold-secondary-fundraiser" placeholder="שם מתרים משני (רשות)">
     </div>
     <div class="form-group">
       <label>נוסח להנצחה <span class="req">*</span></label>
@@ -878,6 +896,7 @@
       <label>תפקיד</label>
       <select class="form-control" id="user-role">
         <option value="user">משתמש רגיל</option>
+        <option value="viewer">צפייה בלבד</option>
         <option value="admin">אדמין</option>
       </select>
     </div>
@@ -973,7 +992,7 @@ let storage = null;
 let currentUser = null;
 let appSettings = {
   captureExpiryDays: 3,
-  donationSources: ["מוקד מוריה", "מוקד בני ברק", "אירועים מוריה", "אחר"],
+  donationSources: ["מוקד מוריה", "מוקד בני ברק", "אירועים מוריה", "אחר", "מתרים עקיבא", "מתרים הרב חיים לוי", "מתרים אנגליה"],
   projectStages: ["תכנון", "בניה", "גימור", "סיום"]
 };
 let allTypes = {};
@@ -1123,9 +1142,15 @@ async function startApp() {
   if (currentUser.role === 'admin') {
     document.getElementById('nav-admin-section').style.display = 'block';
     document.getElementById('nav-user-section').style.display = 'none';
+    document.getElementById('nav-viewer-section').style.display = 'none';
+  } else if (currentUser.role === 'viewer') {
+    document.getElementById('nav-admin-section').style.display = 'none';
+    document.getElementById('nav-user-section').style.display = 'none';
+    document.getElementById('nav-viewer-section').style.display = 'block';
   } else {
     document.getElementById('nav-admin-section').style.display = 'none';
     document.getElementById('nav-user-section').style.display = 'block';
+    document.getElementById('nav-viewer-section').style.display = 'none';
   }
 
   if (IS_CONFIGURED) {
@@ -1148,6 +1173,8 @@ async function startApp() {
   if (currentUser.role === 'admin') {
     showPage('admin-projects');
     openExpiredCapturesModal();
+  } else if (currentUser.role === 'viewer') {
+    showPage('search');
   } else {
     showPage('projects');
   }
@@ -1316,6 +1343,11 @@ async function renderProjectsPage() {
       if (snap.exists()) snap.forEach(c => _projectsCommsList.push(c.val()));
       _projectsPageEntries.forEach(([id]) =>
         updateProjectStats(id, _projectsCommsList.filter(c => c.projectId === id)));
+    }).catch(e => {
+      _projectsPageEntries.forEach(([id]) => {
+        const el = document.getElementById(`ps-${id}`);
+        if (el) el.innerHTML = '<span style="color:var(--danger);font-size:11px;">⚠️ שגיאת טעינה</span>';
+      });
     });
   } else {
     _projectsCommsList = Object.values(allComms);
@@ -1519,10 +1551,12 @@ function renderCommCard(id, c, blockedByWhole) {
   const isMine = c.capturedBy === currentUser.uid;
 
   const isBlocked = blockedByWhole && !c.isWholeProject && c.status === 'available';
+  const isDisabled = !!c.isDisabled;
 
   let meta = '';
-  if (c.status === 'captured') {
-    const expiryStr = c.captureExpiry ? formatDate(c.captureExpiry) : '';
+  if (isDisabled && c.status === 'available') {
+    meta = `<div class="comm-meta" style="color:#9E9E9E;">🔒 לא למכירה</div>`;
+  } else if (c.status === 'captured') {
     meta = `<div class="comm-meta">תפוס: <strong>${esc(c.capturedByName||'')}</strong></div>`;
   } else if (c.status === 'sold') {
     meta = `<div class="comm-meta">תורם: <strong>${esc(c.donorName||'')}</strong></div>`;
@@ -1531,7 +1565,7 @@ function renderCommCard(id, c, blockedByWhole) {
   }
 
   let actions = '';
-  if (isProjectActive && !isBlocked) {
+  if (isProjectActive && !isBlocked && !isDisabled) {
     if (c.status === 'available') {
       actions = `<div class="comm-actions">
         <button class="btn btn-primary btn-sm" onclick="event.stopPropagation();openCapture('${id}')" style="flex:1;">✋ תפוס</button>
@@ -1545,12 +1579,12 @@ function renderCommCard(id, c, blockedByWhole) {
     }
   }
 
-  const isCompletionAvailable = c.status === 'available' && !isBlocked && pStatus === 'completion';
-  const cardClass = isBlocked ? 'status-blocked' : (isCompletionAvailable ? 'status-available-completion' : `status-${c.status}`);
-  const badgeClass = isBlocked ? 'badge-sold' : (isCompletionAvailable ? 'badge-completion' : badgeClasses[c.status]);
-  const badgeLabel = isBlocked ? '🔒 חסומה' : (isCompletionAvailable ? '🔵 להשלמה' : statusLabels[c.status]);
+  const isCompletionAvailable = c.status === 'available' && !isBlocked && !isDisabled && pStatus === 'completion';
+  const cardClass = isDisabled && c.status === 'available' ? 'status-blocked' : (isBlocked ? 'status-blocked' : (isCompletionAvailable ? 'status-available-completion' : `status-${c.status}`));
+  const badgeClass = isDisabled && c.status === 'available' ? 'badge-sold' : (isBlocked ? 'badge-sold' : (isCompletionAvailable ? 'badge-completion' : badgeClasses[c.status]));
+  const badgeLabel = isDisabled && c.status === 'available' ? '🔒 לא למכירה' : (isBlocked ? '🔒 חסומה' : (isCompletionAvailable ? '🔵 להשלמה' : statusLabels[c.status]));
 
-  const cardStyle = isBlocked ? ' style="opacity:0.55;border-color:#ccc;"' : '';
+  const cardStyle = (isBlocked || isDisabled) ? ' style="opacity:0.55;border-color:#ccc;"' : '';
   const wholeProjectBadge = c.isWholeProject ? '<span style="font-size:10px;background:#FFF3E0;color:#E65100;border-radius:4px;padding:1px 5px;font-weight:600;margin-bottom:2px;display:inline-block;">⭐ כל הפרויקט</span><br>' : '';
 
   return `<div class="comm-card ${cardClass}"${cardStyle} onclick="openCommDetail('${id}')">
@@ -1578,6 +1612,7 @@ function openCapture(commId) {
   const defaultDate = new Date(Date.now() + appSettings.captureExpiryDays * 86400000);
   document.getElementById('capture-until-date').value = defaultDate.toISOString().split('T')[0];
   document.getElementById('capture-donor-name').value = '';
+  document.getElementById('capture-operator-name').value = '';
   document.getElementById('capture-note').value = '';
   const capSrc = document.getElementById('capture-source');
   capSrc.innerHTML = '<option value="">— בחר מקור —</option>' + appSettings.donationSources.map(s => `<option value="${esc(s)}">${esc(s)}</option>`).join('');
@@ -1598,6 +1633,7 @@ async function confirmCapture() {
 
   const capturedDonorName = document.getElementById('capture-donor-name').value.trim() || null;
   const captureSource = document.getElementById('capture-source').value || null;
+  const captureOperatorName = document.getElementById('capture-operator-name').value.trim() || null;
   const captureNote = document.getElementById('capture-note').value.trim() || null;
 
   closeModal('modal-capture');
@@ -1605,7 +1641,7 @@ async function confirmCapture() {
   if (!IS_CONFIGURED) {
     const c = allComms[commId];
     if (!c || c.status !== 'available') { showToast('ההנצחה כבר נתפסה', 'error'); renderCommsGrid(); return; }
-    allComms[commId] = { ...c, status: 'captured', capturedBy: currentUser.uid, capturedByName: currentUser.displayName, capturedAt: Date.now(), captureExpiry, capturedDonorName, captureSource, captureNote, captureExpiredAt: null };
+    allComms[commId] = { ...c, status: 'captured', capturedBy: currentUser.uid, capturedByName: currentUser.displayName, capturedAt: Date.now(), captureExpiry, capturedDonorName, captureSource, captureOperatorName, captureNote, captureExpiredAt: null };
     renderCommsGrid(); renderCommsStats();
     showToast('ההנצחה נתפסה בהצלחה! ✋', 'success');
     if (currentPage === 'search') runSearch();
@@ -1618,7 +1654,7 @@ async function confirmCapture() {
     await db.ref(`commemorations/${commId}`).transaction(current => {
       if (!current || current.status !== 'available') return;
       success = true;
-      return { ...current, status: 'captured', capturedBy: currentUser.uid, capturedByName: currentUser.displayName, capturedAt, captureExpiry, capturedDonorName, captureSource, captureNote, captureExpiredAt: null };
+      return { ...current, status: 'captured', capturedBy: currentUser.uid, capturedByName: currentUser.displayName, capturedAt, captureExpiry, capturedDonorName, captureSource, captureOperatorName, captureNote, captureExpiredAt: null };
     });
     if (success) {
       const c = allComms[commId] || {};
@@ -1690,6 +1726,7 @@ function openDirectSell(commId) {
     if (el) el.value = '';
   });
   document.getElementById('sell-payment-method').value = '';
+  document.getElementById('sell-secondary-fundraiser').value = '';
   document.getElementById('sell-error').style.display = 'none';
   const sel = document.getElementById('sell-source');
   sel.innerHTML = '<option value="">— בחר מקור —</option>' + appSettings.donationSources.map(s => `<option value="${esc(s)}">${esc(s)}</option>`).join('');
@@ -1720,6 +1757,7 @@ function openSell(commId) {
   sel.innerHTML = '<option value="">— בחר מקור —</option>' + appSettings.donationSources.map(s => `<option value="${esc(s)}">${esc(s)}</option>`).join('');
   if (c.capturedDonorName) document.getElementById('sell-donor-name').value = c.capturedDonorName;
   if (c.captureSource) document.getElementById('sell-source').value = c.captureSource;
+  document.getElementById('sell-secondary-fundraiser').value = c.captureSecondaryFundraiser || '';
   openModal('modal-sell');
 }
 
@@ -1731,6 +1769,7 @@ async function confirmSell() {
   const donationNumber = document.getElementById('sell-donation-number').value.trim();
   const commemorationNames = document.getElementById('sell-commemoration-names').value.trim();
   const source = document.getElementById('sell-source').value;
+  const secondaryFundraiser = document.getElementById('sell-secondary-fundraiser').value.trim();
   const paymentMethod = document.getElementById('sell-payment-method').value;
   const saleNotes = document.getElementById('sell-notes').value.trim();
   const errEl = document.getElementById('sell-error');
@@ -1746,6 +1785,7 @@ async function confirmSell() {
     status: 'sold', donorName, donorPhone, donorEmail: donorEmail || null,
     donorNumber: donorNumber || null,
     donationNumber: donationNumber || null, commemorationNames, donationSource: source,
+    secondaryFundraiser: secondaryFundraiser || null,
     paymentMethod: paymentMethod || null, saleNotes: saleNotes || null,
     soldBy: currentUser.uid, soldByName: currentUser.displayName, soldAt,
     capturedBy: null, capturedByName: null, capturedAt: null, captureExpiry: null, captureExpiredAt: null
@@ -1818,7 +1858,9 @@ function openCommDetail(commId) {
     html += `<hr class="divider">
       <div class="info-row"><span class="info-label">תפוס ע"י:</span><span>${esc(c.capturedByName||'')}</span></div>
       <div class="info-row"><span class="info-label">שם תורם:</span><span>${esc(c.capturedDonorName||'-')}</span></div>
+      <div class="info-row"><span class="info-label">שם טלפנית:</span><span>${esc(c.captureOperatorName||'-')}</span></div>
       <div class="info-row"><span class="info-label">מקור:</span><span>${esc(c.captureSource||'-')}</span></div>
+      ${c.captureSecondaryFundraiser ? `<div class="info-row"><span class="info-label">מתרים משני:</span><span>${esc(c.captureSecondaryFundraiser)}</span></div>` : ''}
       ${c.captureNote ? `<div class="info-row"><span class="info-label">הערה:</span><span>${esc(c.captureNote)}</span></div>` : ''}
       <div class="info-row"><span class="info-label">פקיעה:</span><span>${c.captureExpiry ? formatDate(c.captureExpiry) : '-'}${c.captureExpiredAt ? ' <span style="color:var(--danger);font-weight:700;">⚠️ פג תוקף</span>' : ''}</span></div>`;
   } else if (c.status === 'sold') {
@@ -1829,6 +1871,7 @@ function openCommDetail(commId) {
       <div class="info-row"><span class="info-label">מס׳ תורם:</span><span>${esc(c.donorNumber||'-')}</span></div>
       <div class="info-row"><span class="info-label">נוסח הנצחה:</span><span style="white-space:pre-wrap;">${esc(c.commemorationNames||'-')}</span></div>
       <div class="info-row"><span class="info-label">מקור:</span><span>${esc(c.donationSource||'-')}</span></div>
+      ${c.secondaryFundraiser ? `<div class="info-row"><span class="info-label">מתרים משני:</span><span>${esc(c.secondaryFundraiser)}</span></div>` : ''}
       <div class="info-row"><span class="info-label">אמצעי תשלום:</span><span>${esc(c.paymentMethod||'-')}</span></div>
       <div class="info-row"><span class="info-label">מס׳ קבלה:</span><span>${esc(c.donationNumber||'-')}</span></div>
       ${c.saleNotes ? `<div class="info-row"><span class="info-label">הערות:</span><span>${esc(c.saleNotes)}</span></div>` : ''}
@@ -1880,6 +1923,10 @@ function openCommDetail(commId) {
   if (isAdmin && c.status !== 'available') {
     actionsHtml = `<button class="btn btn-danger btn-sm" onclick="adminResetComm('${commId}')">↩ איפוס לפנוי</button>` + actionsHtml;
   }
+  if (isAdmin && c.status === 'available') {
+    const disLabel = c.isDisabled ? '🔓 החזר למכירה' : '🔒 סמן לא למכירה';
+    actionsHtml = `<button class="btn btn-ghost btn-sm" onclick="adminToggleDisabled('${commId}')">${disLabel}</button>` + actionsHtml;
+  }
   document.getElementById('detail-actions').innerHTML = actionsHtml;
   openModal('modal-comm-detail');
 }
@@ -1899,6 +1946,7 @@ function openEditSold(commId) {
   document.getElementById('edit-sold-commemoration-names').value = c.commemorationNames || '';
   const editSrc = document.getElementById('edit-sold-source');
   editSrc.innerHTML = '<option value="">— בחר מקור —</option>' + appSettings.donationSources.map(s => `<option value="${esc(s)}"${c.donationSource===s?' selected':''}>${esc(s)}</option>`).join('');
+  document.getElementById('edit-sold-secondary-fundraiser').value = c.secondaryFundraiser || '';
   document.getElementById('edit-sold-donation-number').value = c.donationNumber || '';
   document.getElementById('edit-sold-payment-method').value = c.paymentMethod || '';
   document.getElementById('edit-sold-notes').value = c.saleNotes || c.captureNote || '';
@@ -1915,6 +1963,7 @@ async function saveEditSold() {
     donorNumber: document.getElementById('edit-sold-donor-number').value.trim() || null,
     commemorationNames: document.getElementById('edit-sold-commemoration-names').value.trim() || null,
     donationSource: document.getElementById('edit-sold-source').value || null,
+    secondaryFundraiser: document.getElementById('edit-sold-secondary-fundraiser').value.trim() || null,
     donationNumber: document.getElementById('edit-sold-donation-number').value.trim() || null,
     paymentMethod: document.getElementById('edit-sold-payment-method').value || null,
     saleNotes: document.getElementById('edit-sold-notes').value.trim() || null,
@@ -1936,9 +1985,24 @@ async function saveEditSold() {
   }
 }
 
+async function adminToggleDisabled(commId) {
+  const c = allComms[commId];
+  if (!c) return;
+  const newVal = !c.isDisabled;
+  const label = newVal ? 'לא למכירה' : 'פנויה';
+  if (!confirm(`לסמן הנצחה זו כ"${label}"?`)) return;
+  if (IS_CONFIGURED) {
+    await db.ref(`commemorations/${commId}`).update({ isDisabled: newVal });
+  }
+  allComms[commId] = { ...c, isDisabled: newVal };
+  closeModal('modal-comm-detail');
+  renderCommsGrid();
+  showToast(newVal ? '🔒 סומן כלא למכירה' : '🔓 הוחזר למכירה', 'success');
+}
+
 async function adminResetComm(commId) {
   if (!confirm('לאפס הנצחה זו חזרה למצב פנוי?')) return;
-  const resetData = { status: 'available', capturedBy: null, capturedByName: null, capturedAt: null, captureExpiry: null, captureExpiredAt: null, capturedDonorName: null, captureFundraiserName: null, captureNote: null, donorName: null, donorPhone: null, donorEmail: null, donorNumber: null, fundraiserName: null, fundraiserSubCategory: null, donationNumber: null, donationSource: null, paymentMethod: null, saleNotes: null, soldBy: null, soldByName: null, soldAt: null };
+  const resetData = { status: 'available', capturedBy: null, capturedByName: null, capturedAt: null, captureExpiry: null, captureExpiredAt: null, capturedDonorName: null, captureFundraiserName: null, captureSecondaryFundraiser: null, captureNote: null, donorName: null, donorPhone: null, donorEmail: null, donorNumber: null, fundraiserName: null, fundraiserSubCategory: null, donationNumber: null, donationSource: null, secondaryFundraiser: null, paymentMethod: null, saleNotes: null, soldBy: null, soldByName: null, soldAt: null };
   if (!IS_CONFIGURED) {
     allComms[commId] = { ...allComms[commId], ...resetData };
     closeModal('modal-comm-detail'); renderCommsGrid(); renderCommsStats(); return;
@@ -2266,6 +2330,7 @@ async function signsExportFiltered() {
       'תת קטגוריה מתרים':  c.fundraiserSubCategory || '',
       'נוסח הנצחה':         c.commemorationNames || '',
       'מקור תרומה':         c.donationSource || '',
+      'מתרים משני':         c.secondaryFundraiser || '',
       'אמצעי תשלום':        c.paymentMethod || '',
       'מספר קבלה':          c.donationNumber || '',
       'אישור הנצחה':        c.approvalChecked ? 'כן' : 'לא',
@@ -2619,6 +2684,28 @@ async function renderAdminProjectsPage() {
   setTopbar('ניהול פרויקטים', `<button class="btn btn-primary btn-sm" onclick="openProjectModal()">➕ פרויקט חדש</button>`);
   if (IS_CONFIGURED) await loadProjects();
 
+  // Load comms counts for captured/sold display
+  let commsCounts = {};
+  if (IS_CONFIGURED) {
+    try {
+      const snap = await db.ref('commemorations').once('value');
+      if (snap.exists()) snap.forEach(c => {
+        const v = c.val();
+        if (!commsCounts[v.projectId]) commsCounts[v.projectId] = { total: 0, sold: 0, captured: 0 };
+        commsCounts[v.projectId].total++;
+        if (v.status === 'sold') commsCounts[v.projectId].sold++;
+        if (v.status === 'captured') commsCounts[v.projectId].captured++;
+      });
+    } catch(e) {}
+  } else {
+    Object.values(allComms).forEach(v => {
+      if (!commsCounts[v.projectId]) commsCounts[v.projectId] = { total: 0, sold: 0, captured: 0 };
+      commsCounts[v.projectId].total++;
+      if (v.status === 'sold') commsCounts[v.projectId].sold++;
+      if (v.status === 'captured') commsCounts[v.projectId].captured++;
+    });
+  }
+
   const stageColors = { 'תכנון': '#5C6BC0', 'בניה': '#F57C00', 'גימור': '#00897B', 'סיום': '#43A047' };
   const rows = Object.entries(allProjects).sort((a,b) => {
     const pa = a[1].priority || 3, pb = b[1].priority || 3;
@@ -2626,15 +2713,25 @@ async function renderAdminProjectsPage() {
     return (b[1].createdAt||0) - (a[1].createdAt||0);
   }).map(([id,p]) => {
     const pStatus = getProjectStatus(p);
-    const statusTag = pStatus === 'active' ? '<span class="tag tag-success">פעיל</span>' :
+    const statusTag = pStatus === 'active' ? '<span class="tag tag-success">פתוח למכירה</span>' :
                       pStatus === 'completion' ? '<span class="tag tag-completion">להשלמה</span>' :
+                      pStatus === 'finished' ? '<span class="tag" style="background:#EDE7F6;color:#4527A0;">הסתיים</span>' :
                       '<span class="tag tag-warning">סגור</span>';
+    const counts = commsCounts[id] || { total: 0, sold: 0, captured: 0 };
+    const countsHtml = counts.total > 0
+      ? `<div style="font-size:11px;color:var(--text-muted);margin-top:3px;">
+          <span style="color:var(--accent);font-weight:700;">${counts.sold}</span> נרכשו
+          ${counts.captured > 0 ? `· <span style="color:#FF9800;font-weight:700;">${counts.captured}</span> תפוסים` : ''}
+          · ${counts.total} סה"כ
+        </div>`
+      : '';
     return `
     <tr style="cursor:pointer;" onclick="openProjectDrawer('${id}')">
       <td style="text-align:center;"><span class="priority-badge priority-${p.priority||3}">${p.priority||3}</span></td>
       <td>
         <strong style="color:var(--primary);text-decoration:underline dotted;">${esc(p.name)}</strong>
         ${p.notes ? `<div style="font-size:12px;color:var(--text-muted);margin-top:2px;">📝 ${esc(p.notes.length>60?p.notes.slice(0,60)+'…':p.notes)}</div>` : ''}
+        ${countsHtml}
       </td>
       <td>
         ${p.stage ? `<span style="display:inline-block;padding:2px 10px;border-radius:20px;font-size:11px;font-weight:700;background:${stageColors[p.stage]||'var(--primary)'};color:white;margin-bottom:4px;">📍 ${esc(p.stage)}</span><br>` : ''}
