@@ -1511,7 +1511,7 @@ function renderProjectCard(id, p) {
 async function loadProjectStats(projectId) {
   const snap = await db.ref('commemorations').orderByChild('projectId').equalTo(projectId).once('value');
   const comms = [];
-  if (snap.exists()) snap.forEach(c => comms.push(c.val()));
+  if (snap.exists()) snap.forEach(c => { comms.push(c.val()); });
   updateProjectStats(projectId, comms);
 }
 
