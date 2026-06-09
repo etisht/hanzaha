@@ -1425,19 +1425,9 @@ async function renderProjectsPage() {
   content.innerHTML = html;
   filterProjectsGrid();
 
-  // Load comms stats once and cache
+  // Load stats per project (more reliable than bulk load)
   if (IS_CONFIGURED) {
-    db.ref('commemorations').once('value').then(snap => {
-      _projectsCommsList = [];
-      if (snap.exists()) snap.forEach(c => _projectsCommsList.push(c.val()));
-      _projectsPageEntries.forEach(([id]) =>
-        updateProjectStats(id, _projectsCommsList.filter(c => c.projectId === id)));
-    }).catch(e => {
-      _projectsPageEntries.forEach(([id]) => {
-        const el = document.getElementById(`ps-${id}`);
-        if (el) el.innerHTML = '<span style="color:var(--danger);font-size:11px;">⚠️ שגיאת טעינה</span>';
-      });
-    });
+    _projectsPageEntries.forEach(([id]) => loadProjectStats(id));
   } else {
     _projectsCommsList = Object.values(allComms);
     _projectsPageEntries.forEach(([id]) =>
@@ -1466,8 +1456,10 @@ function filterProjectsGrid() {
 
   container.innerHTML = `<div class="projects-grid">` + entries.map(([id, p]) => renderProjectCard(id, p)).join('') + `</div>`;
 
-  // Only apply stats from the dedicated cached load, not from stale allComms
-  if (_projectsCommsList !== null) {
+  // Reload stats for visible projects
+  if (IS_CONFIGURED) {
+    entries.forEach(([id]) => loadProjectStats(id));
+  } else if (_projectsCommsList !== null) {
     entries.forEach(([id]) =>
       updateProjectStats(id, _projectsCommsList.filter(c => c.projectId === id)));
   }
