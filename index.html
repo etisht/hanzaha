@@ -331,17 +331,50 @@
     /* ===== RESPONSIVE ===== */
     @media (max-width: 768px) {
       :root { --sidebar-w: 0px; }
-      .sidebar { transform: translateX(100%); width: 280px; }
+      .sidebar { transform: translateX(100%); width: 290px; }
       .sidebar.open { transform: translateX(0); }
       .main-content { margin-right: 0; }
       .mobile-menu-btn { display: block; }
-      .page-content { padding: 16px; }
-      .topbar { padding: 12px 16px; }
-      .comms-grid { grid-template-columns: 1fr; }
+      .page-content { padding: 14px 12px; }
+      .topbar { padding: 10px 14px; }
+      .topbar-title { font-size: 16px; }
+      .comms-grid { grid-template-columns: 1fr 1fr; gap: 10px; }
       .projects-grid { grid-template-columns: 1fr; }
-      .modal { padding: 22px 18px; }
-      .login-box { padding: 36px 24px; }
-      .stats-row { gap: 10px; }
+      .modal { padding: 20px 16px; max-width: 96vw !important; }
+      .login-box { padding: 32px 20px; }
+      .stats-row { gap: 8px; }
+      .stat-chip { padding: 10px 12px; min-width: 90px; }
+      .stat-chip .stat-num { font-size: 18px; }
+      .card { padding: 16px; }
+      .filters-bar { flex-direction: column; align-items: stretch; gap: 8px !important; }
+      .filters-bar .filter-select,
+      .filters-bar input { width: 100%; }
+      .table-wrap { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+      .data-table { font-size: 12px; }
+      .data-table th, .data-table td { padding: 8px 10px; white-space: nowrap; }
+      .btn-row { flex-wrap: nowrap; }
+      .section-header { flex-direction: column; align-items: flex-start; gap: 10px; }
+      .drawer-stat-grid { grid-template-columns: repeat(2,1fr); }
+      .comm-card { padding: 12px; }
+      .comm-card-name { font-size: 13px; }
+      .comm-card-price { font-size: 14px; }
+      .comm-actions { gap: 6px; }
+      .comm-actions .btn { padding: 7px 10px; font-size: 12px; }
+      .breadcrumb { font-size: 13px; }
+      .page-content .card { margin-bottom: 14px; }
+    }
+    @media (max-width: 480px) {
+      .comms-grid { grid-template-columns: 1fr; }
+      .stat-chip { min-width: 80px; padding: 8px 10px; }
+      .stat-chip .stat-icon { font-size: 18px; }
+      .stat-chip .stat-num { font-size: 16px; }
+      .topbar { gap: 8px; }
+      .topbar-title { font-size: 14px; }
+      .btn { padding: 9px 16px; font-size: 14px; }
+      .btn-sm { padding: 6px 10px; font-size: 12px; }
+      .modal-title { font-size: 16px; }
+      .login-box { padding: 28px 16px; }
+      .login-title { font-size: 20px; }
     }
 
     /* ===== CHECKLIST ===== */
@@ -516,7 +549,14 @@
   <div class="sidebar" id="sidebar">
     <div class="sidebar-header">
       <div class="sidebar-logo">
-        <div class="sidebar-logo-icon">🕍</div>
+        <div class="sidebar-logo-icon">
+          <svg width="38" height="38" viewBox="0 0 38 38" fill="none" xmlns="http://www.w3.org/2000/svg">
+            <circle cx="19" cy="19" r="19" fill="rgba(255,255,255,0.15)"/>
+            <path d="M19 6C19 6 11 15 11 21a8 8 0 0 0 16 0C27 15 19 6 19 6z" fill="#E8CC80"/>
+            <path d="M19 10C19 10 14 17 14 21a5 5 0 0 0 10 0C24 17 19 10 19 10z" fill="white" opacity="0.8"/>
+            <text x="19" y="25" text-anchor="middle" font-family="Heebo,sans-serif" font-size="8" font-weight="800" fill="#4A3060">ט.מ</text>
+          </svg>
+        </div>
         <div>
           <div class="sidebar-title">ניהול הנצחות</div>
           <div class="sidebar-org">טהרת המשפחה</div>
@@ -913,6 +953,7 @@
       <label>תפקיד</label>
       <select class="form-control" id="user-role">
         <option value="user">משתמש רגיל</option>
+        <option value="senior">משתמש בכיר (הכל חוץ מהוספת מוצרים)</option>
         <option value="viewer">צפייה בלבד</option>
         <option value="admin">אדמין</option>
       </select>
@@ -1161,7 +1202,7 @@ async function startApp() {
   document.getElementById('app').style.display = 'block';
   document.getElementById('sidebar-username').textContent = currentUser.displayName || currentUser.username;
 
-  if (currentUser.role === 'admin') {
+  if (currentUser.role === 'admin' || currentUser.role === 'senior') {
     document.getElementById('nav-admin-section').style.display = 'block';
     document.getElementById('nav-user-section').style.display = 'none';
     document.getElementById('nav-viewer-section').style.display = 'none';
@@ -1195,6 +1236,9 @@ async function startApp() {
   if (currentUser.role === 'admin') {
     showPage('admin-projects');
     openExpiredCapturesModal();
+    setTimeout(checkWordingReminders, 3000);
+  } else if (currentUser.role === 'senior') {
+    showPage('projects');
     setTimeout(checkWordingReminders, 3000);
   } else if (currentUser.role === 'viewer') {
     showPage('search');
@@ -1300,6 +1344,15 @@ async function handleExpiredCapture(commId, action, days) {
 // ============================================================
 //  PAGE ROUTER
 // ============================================================
+let _navigatingByHistory = false;
+
+window.addEventListener('popstate', function(e) {
+  if (!currentUser || !e.state) return;
+  _navigatingByHistory = true;
+  showPage(e.state.page, e.state.projectId || undefined);
+  _navigatingByHistory = false;
+});
+
 function showPage(page, projectId) {
   document.querySelectorAll('.nav-item').forEach(el => el.classList.remove('active'));
   const navEl = document.querySelector(`.nav-item[data-page="${page}"]`);
@@ -1310,6 +1363,11 @@ function showPage(page, projectId) {
   currentPage = page;
   if (projectId) currentProjectId = projectId;
   closeSidebar();
+
+  // Push to browser history so the back button stays within the app
+  if (currentUser && !_navigatingByHistory) {
+    history.pushState({ page, projectId: projectId || null }, '', '#' + page + (projectId ? '/' + projectId : ''));
+  }
 
   const routes = {
     'projects': renderProjectsPage,
@@ -1345,12 +1403,13 @@ async function renderProjectsPage() {
   const isAdmin = currentUser.role === 'admin';
   // Non-admin: only non-closed; Admin: all projects
   _projectsPageEntries = Object.entries(allProjects)
-    .filter(([, p]) => isAdmin ? true : getProjectStatus(p) !== 'closed');
+    .filter(([, p]) => isAdmin ? true : getProjectStatus(p) !== 'closed')
+    .sort((a, b) => (b[1].createdAt || 0) - (a[1].createdAt || 0));
   _projectsCommsList = null;
 
   let html = IS_CONFIGURED ? '' : renderSetupBanner();
 
-  html += `<div class="filters-bar">
+  html += `<div class="filters-bar" style="flex-wrap:wrap;gap:10px;">
     <span class="filter-label">סינון לפי סטאטוס:</span>
     <select class="filter-select" id="filter-project-status" onchange="filterProjectsGrid()">
       <option value="">כל הסטאטוסים</option>
@@ -1359,6 +1418,7 @@ async function renderProjectsPage() {
       ${isAdmin ? '<option value="closed">⬤ סגור</option>' : ''}
       ${isAdmin ? '<option value="finished">✓ הסתיים</option>' : ''}
     </select>
+    <input class="filter-select" id="filter-project-text" placeholder="חיפוש לפי שם..." style="min-width:160px;" oninput="filterProjectsGrid()">
   </div>
   <div id="projects-grid-container"></div>`;
 
@@ -1387,9 +1447,13 @@ async function renderProjectsPage() {
 
 function filterProjectsGrid() {
   const statusFilter = document.getElementById('filter-project-status')?.value || '';
+  const textFilter = (document.getElementById('filter-project-text')?.value || '').trim().toLowerCase();
   let entries = _projectsPageEntries;
   if (statusFilter) {
     entries = entries.filter(([, p]) => getProjectStatus(p) === statusFilter);
+  }
+  if (textFilter) {
+    entries = entries.filter(([, p]) => p.name.toLowerCase().includes(textFilter));
   }
 
   const container = document.getElementById('projects-grid-container');
@@ -1402,10 +1466,11 @@ function filterProjectsGrid() {
 
   container.innerHTML = `<div class="projects-grid">` + entries.map(([id, p]) => renderProjectCard(id, p)).join('') + `</div>`;
 
-  // Apply cached stats to newly rendered cards
-  const commsList = _projectsCommsList !== null ? _projectsCommsList : Object.values(allComms);
-  entries.forEach(([id]) =>
-    updateProjectStats(id, commsList.filter(c => c.projectId === id)));
+  // Only apply stats from the dedicated cached load, not from stale allComms
+  if (_projectsCommsList !== null) {
+    entries.forEach(([id]) =>
+      updateProjectStats(id, _projectsCommsList.filter(c => c.projectId === id)));
+  }
 }
 
 function renderSetupBanner() {
@@ -1615,10 +1680,11 @@ function renderCommCard(id, c, blockedByWhole) {
 
   const cardStyle = (isBlocked || isDisabled) ? ' style="opacity:0.55;border-color:#ccc;"' : '';
   const wholeProjectBadge = c.isWholeProject ? '<span style="font-size:10px;background:#FFF3E0;color:#E65100;border-radius:4px;padding:1px 5px;font-weight:600;margin-bottom:2px;display:inline-block;">⭐ כל הפרויקט</span><br>' : '';
+  const unitBadge = c.parentGroupId ? `<span style="font-size:10px;background:#E3F2FD;color:#1565C0;border-radius:4px;padding:1px 5px;font-weight:600;margin-bottom:2px;display:inline-block;">יחידה ${c.unitIndex||''}/${c.totalUnits||''}</span><br>` : '';
 
   return `<div class="comm-card ${cardClass}"${cardStyle} onclick="openCommDetail('${id}')">
     <span class="comm-status-badge ${badgeClass}">${badgeLabel}</span>
-    <div class="comm-card-name">${wholeProjectBadge}${esc(c.name)}</div>
+    <div class="comm-card-name">${wholeProjectBadge}${unitBadge}${esc(c.name)}</div>
     <div class="comm-card-type">${esc(type)}</div>
     <div class="comm-card-price">₪${(c.price||0).toLocaleString()}</div>
     ${meta}${actions}
@@ -1875,7 +1941,7 @@ function openCommDetail(commId) {
   if (!c) return;
   const type = allTypes[c.typeId]?.name || '';
   const statusLabels = { available: 'פנויה', captured: 'תפוסה', sold: 'נמכרה' };
-  const isAdmin = currentUser.role === 'admin';
+  const isAdmin = currentUser.role === 'admin' || currentUser.role === 'senior';
 
   let html = `
     <div class="info-row"><span class="info-label">שם:</span><span>${esc(c.name)}</span></div>
@@ -2035,12 +2101,23 @@ async function adminToggleDisabled(commId) {
 
 async function adminResetComm(commId) {
   if (!confirm('לאפס הנצחה זו חזרה למצב פנוי?')) return;
+  const c = allComms[commId] || {};
+  const wasSold = c.status === 'sold';
   const resetData = { status: 'available', capturedBy: null, capturedByName: null, capturedAt: null, captureExpiry: null, captureExpiredAt: null, capturedDonorName: null, captureFundraiserName: null, captureSecondaryFundraiser: null, captureNote: null, donorName: null, donorPhone: null, donorEmail: null, donorNumber: null, fundraiserName: null, fundraiserSubCategory: null, donationNumber: null, donationSource: null, secondaryFundraiser: null, paymentMethod: null, saleNotes: null, soldBy: null, soldByName: null, soldAt: null };
   if (!IS_CONFIGURED) {
-    allComms[commId] = { ...allComms[commId], ...resetData };
+    allComms[commId] = { ...c, ...resetData };
     closeModal('modal-comm-detail'); renderCommsGrid(); renderCommsStats(); return;
   }
   await db.ref(`commemorations/${commId}`).update(resetData);
+  if (wasSold) {
+    await db.ref('saleLog').push({
+      commId, commName: c.name || '', projectId: c.projectId || currentProjectId || '',
+      donorName: c.donorName || '', donorPhone: c.donorPhone || '',
+      soldBy: currentUser.uid, soldByName: currentUser.displayName,
+      soldAt: Date.now(), price: c.price || 0, directSell: false,
+      logType: 'release', releasedBy: currentUser.uid, releasedByName: currentUser.displayName, releasedAt: Date.now()
+    });
+  }
   closeModal('modal-comm-detail');
   showToast('ההנצחה אופסה לפנויה', 'success');
 }
@@ -2049,7 +2126,7 @@ async function adminResetComm(commId) {
 //  ADMIN CHECKLIST / IMAGE / EMAIL
 // ============================================================
 async function adminUpdateCommChecklist(commId, field, value) {
-  if (currentUser.role !== 'admin') return;
+  if (currentUser.role !== 'admin' && currentUser.role !== 'senior') return;
   const updates = { [field]: value };
   if (allComms[commId]) Object.assign(allComms[commId], updates);
   if (!IS_CONFIGURED) return;
@@ -2171,10 +2248,17 @@ async function renderSaleHistoryPage() {
   logs.reverse();
   const rows = logs.map(function(l) {
     const projName = (allProjects[l.projectId] && allProjects[l.projectId].name) || '';
-    const typeBadge = l.directSell ? '<span style="background:#E3F2FD;color:#1565C0;border-radius:6px;padding:1px 7px;font-size:11px;font-weight:700;">⚡ ישיר</span>' : '<span style="background:#E8F5E9;color:#2E7D32;border-radius:6px;padding:1px 7px;font-size:11px;font-weight:700;">✋→💰</span>';
-    return '<tr><td><strong>' + esc(l.commName||'') + '</strong></td><td>' +
+    const isRelease = l.logType === 'release';
+    const typeBadge = isRelease
+      ? '<span style="background:#FFEBEE;color:#C62828;border-radius:6px;padding:1px 7px;font-size:11px;font-weight:700;">🔓 שוחרר</span>'
+      : l.directSell
+        ? '<span style="background:#E3F2FD;color:#1565C0;border-radius:6px;padding:1px 7px;font-size:11px;font-weight:700;">⚡ ישיר</span>'
+        : '<span style="background:#E8F5E9;color:#2E7D32;border-radius:6px;padding:1px 7px;font-size:11px;font-weight:700;">✋→💰</span>';
+    const rowStyle = isRelease ? ' style="background:#FFF5F5;opacity:0.85;"' : '';
+    const priceDisplay = isRelease ? '<span style="color:#C62828;">—</span>' : '₪' + ((l.price||0).toLocaleString());
+    return '<tr' + rowStyle + '><td><strong>' + esc(l.commName||'') + '</strong></td><td>' +
       esc(projName) + '</td><td>' + esc(l.donorName||'') + '</td><td>' + esc(l.donorPhone||'') + '</td><td>' +
-      esc(l.fundraiserName||'-') + '</td><td style="font-weight:700;color:var(--accent);">₪' + ((l.price||0).toLocaleString()) + '</td><td>' +
+      esc(l.fundraiserName||'-') + '</td><td style="font-weight:700;color:var(--accent);">' + priceDisplay + '</td><td>' +
       esc(l.soldByName||'') + '</td><td>' + (l.soldAt ? formatDate(l.soldAt) : '-') + '</td><td>' + typeBadge + '</td></tr>';
   }).join('');
   const totalAmount = logs.reduce((s,l) => s + (l.price||0), 0);
@@ -2322,11 +2406,11 @@ async function renderSignsPage() {
         : '';
       const hungTag = c.signHung ? '<span style="font-size:10px;background:#E8F5E9;color:#2E7D32;border-radius:4px;padding:1px 5px;margin-right:4px;">✓ תלוי</span>' : '';
       return `<tr style="${c.signHung ? 'background:#F0FBF0;' : ''}cursor:pointer;" title="לחץ לפרטים מלאים" onclick="signsOpenDetail('${id}')">
+        <td style="font-size:12px;font-weight:700;color:var(--primary-dark);">${esc(proj?.name||'')}</td>
         <td>
           <strong style="color:var(--primary);">${esc(c.name)}</strong>
           ${imgIcon}${hungTag}
         </td>
-        <td style="font-size:12px;">${esc(proj?.name||'')}</td>
         <td style="font-size:13px;"><strong>${esc(c.donorName||'-')}</strong>
           ${c.donorPhone ? `<div style="font-size:11px;color:var(--text-muted);">${esc(c.donorPhone)}</div>` : ''}
         </td>
@@ -2342,7 +2426,7 @@ async function renderSignsPage() {
     return statsHtml + `<div class="table-wrap">
       <table class="data-table">
         <thead><tr>
-          <th>הנצחה</th><th>מקווה</th><th>תורם</th><th>נוסח הנצחה</th>
+          <th>מקווה</th><th>הנצחה</th><th>תורם</th><th>נוסח הנצחה</th>
           <th style="text-align:center;">✅ אישור</th>
           <th style="text-align:center;">🎨 עיצוב</th>
           <th style="text-align:center;">🖨️ הדפסה</th>
@@ -2933,19 +3017,21 @@ async function renderAdminProjectCommsPage() {
     Object.entries(allComms).filter(([,c]) => c.projectId === currentProjectId).forEach(([id,c]) => { comms[id] = c; });
   }
 
+  const isAdmin = currentUser.role === 'admin';
+  const canEditComms = isAdmin;
   const statusLabels = { available: 'פנויה', captured: 'תפוסה', sold: 'נמכרה' };
   const statusTagClass = { available: 'tag-success', captured: 'tag-warning', sold: 'tag-gray' };
   const rows = Object.entries(comms).map(([id,c]) => `
     <tr>
-      <td><strong>${esc(c.name)}</strong>${c.isWholeProject ? ' <span class="tag tag-warning" style="font-size:11px;vertical-align:middle;">⭐ כל הפרויקט</span>' : ''}${c.notes ? `<div style="font-size:12px;color:var(--text-muted);margin-top:2px;">${esc(c.notes)}</div>` : ''}</td>
+      <td><strong>${esc(c.name)}</strong>${c.isWholeProject ? ' <span class="tag tag-warning" style="font-size:11px;vertical-align:middle;">⭐ כל הפרויקט</span>' : ''}${c.parentGroupId ? ` <span style="font-size:10px;background:#E3F2FD;color:#1565C0;border-radius:4px;padding:1px 5px;font-weight:600;">יחידה ${c.unitIndex||''}/${c.totalUnits||''}</span>` : ''}${c.notes ? `<div style="font-size:12px;color:var(--text-muted);margin-top:2px;">${esc(c.notes)}</div>` : ''}</td>
       <td>${esc(allTypes[c.typeId]?.name||'')}</td>
       <td>₪${(c.price||0).toLocaleString()}</td>
       <td><span class="tag ${statusTagClass[c.status]||''}">${statusLabels[c.status]||''}</span></td>
       <td>
-        <div class="btn-row">
+        ${canEditComms ? `<div class="btn-row">
           <button class="btn btn-ghost btn-sm" onclick="editComm('${id}')">✏️</button>
           <button class="btn btn-danger btn-sm" onclick="deleteComm('${id}')">🗑</button>
-        </div>
+        </div>` : '—'}
       </td>
     </tr>`).join('');
 
@@ -2967,10 +3053,10 @@ async function renderAdminProjectCommsPage() {
     ${project.description ? `<div style="background:#F9F6F2;border:1px solid var(--border);border-radius:10px;padding:12px 16px;margin-bottom:16px;font-size:14px;color:var(--text-muted);line-height:1.7;">📝 ${esc(project.description)}</div>` : ''}
 <div class="section-header">
       <h2>הנצחות בפרויקט (${Object.keys(comms).length})</h2>
-      <div style="display:flex;gap:8px;">
+      ${canEditComms ? `<div style="display:flex;gap:8px;">
         <button class="btn btn-primary btn-sm" onclick="openCommModal('${currentProjectId}')">➕ הוסף הנצחות</button>
         <button class="btn btn-ghost btn-sm" onclick="openFreeCommModal('${currentProjectId}')">✏️ פריט חופשי</button>
-      </div>
+      </div>` : ''}
     </div>
     <div class="table-wrap">
       <table class="data-table">
@@ -3232,7 +3318,7 @@ async function renderAdminUsersPage() {
     <tr>
       <td>${esc(u.displayName||'')}</td>
       <td>${esc(u.username||'')}</td>
-      <td><span class="tag ${u.role==='admin'?'tag-accent':'tag-primary'}">${u.role==='admin'?'אדמין':'משתמש'}</span></td>
+      <td><span class="tag ${u.role==='admin'?'tag-accent':u.role==='senior'?'tag-warning':u.role==='viewer'?'tag-gray':'tag-primary'}">${u.role==='admin'?'אדמין':u.role==='senior'?'בכיר':u.role==='viewer'?'צפייה':'משתמש'}</span></td>
       <td>
         <div class="btn-row">
           <button class="btn btn-ghost btn-sm" onclick="openUserModal('${id}')">✏️ עריכה</button>
@@ -3701,7 +3787,9 @@ async function runSearch() {
   const projectNameQuery = (document.getElementById('search-project-name')?.value || '').trim().toLowerCase();
   const projectStatusFilter = document.getElementById('search-project-status')?.value || '';
   const typeTextQuery = (document.getElementById('search-type-text')?.value || '').trim().toLowerCase();
-  const typeFilter = typeTextQuery ? Object.entries(allTypes).find(([,t]) => t.name.toLowerCase() === typeTextQuery)?.[0] || '__nomatch__' : '';
+  const matchingTypeIds = typeTextQuery
+    ? new Set(Object.entries(allTypes).filter(([,t]) => t.name.toLowerCase().includes(typeTextQuery)).map(([id]) => id))
+    : null;
   const sortMode = document.getElementById('search-sort')?.value || 'default';
   const resultsEl = document.getElementById('search-results');
   if (!resultsEl) return;
@@ -3755,7 +3843,7 @@ async function runSearch() {
 
   let filtered = commsEntries.filter(([,c]) => {
     if (!matchingProjectIds.has(c.projectId)) return false;
-    if (typeFilter && c.typeId !== typeFilter) return false;
+    if (matchingTypeIds && !matchingTypeIds.has(c.typeId)) return false;
     if (c.status !== 'available') return false; // רק פנויות
     return true;
   });
@@ -3835,6 +3923,7 @@ function renderSearchCommCard(id, c) {
   const wholeProjectBadge = c.isWholeProject
     ? '<span style="font-size:10px;background:#FFF3E0;color:#E65100;border-radius:4px;padding:1px 5px;font-weight:600;margin-bottom:2px;display:inline-block;">⭐ כל הפרויקט</span><br>'
     : '';
+  const unitBadgeSearch = c.parentGroupId ? `<span style="font-size:10px;background:#E3F2FD;color:#1565C0;border-radius:4px;padding:1px 5px;font-weight:600;margin-bottom:2px;display:inline-block;">יחידה ${c.unitIndex||''}/${c.totalUnits||''}</span><br>` : '';
 
   let actions = '';
   if (isProjectActive && !isBlocked) {
@@ -3853,10 +3942,10 @@ function renderSearchCommCard(id, c) {
 
   return `<div class="comm-card ${cardClass}"${cardStyleAttr} onclick="openCommDetail('${id}')">
     <span class="comm-status-badge ${badgeClass}">${badgeLabel}</span>
-    <div style="font-size:10px;color:var(--text-muted);margin-bottom:3px;line-height:1.3;padding-left:50px;">
+    <div style="font-size:13px;font-weight:700;color:var(--primary);margin-bottom:4px;line-height:1.3;padding-left:50px;">
       <span class="priority-badge priority-${priority}" style="font-size:9px;padding:1px 4px;margin-left:3px;">${priority}</span>${esc(project.name)}
     </div>
-    <div class="comm-card-name" style="padding-left:0;">${wholeProjectBadge}${esc(c.name)}</div>
+    <div class="comm-card-name" style="padding-left:0;">${wholeProjectBadge}${unitBadgeSearch}${esc(c.name)}</div>
     <div class="comm-card-type">${esc(type)}</div>
     <div class="comm-card-price">₪${(c.price||0).toLocaleString()}</div>
     ${actions}
