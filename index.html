@@ -1637,7 +1637,9 @@ function renderCommsGrid() {
     const order = { available: 0, captured: 1, sold: 2 };
     if (a[1].isWholeProject && !b[1].isWholeProject) return -1;
     if (!a[1].isWholeProject && b[1].isWholeProject) return 1;
-    return (order[a[1].status] || 0) - (order[b[1].status] || 0);
+    const statusDiff = (order[a[1].status] || 0) - (order[b[1].status] || 0);
+    if (statusDiff !== 0) return statusDiff;
+    return (b[1].price||0) - (a[1].price||0);
   });
 
   const wholeProjectActive = Object.values(allComms)
