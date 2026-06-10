@@ -3228,9 +3228,10 @@ async function saveComm() {
   }
 
   const groupId = 'grp_' + Date.now();
+  const unitPrice = price / unitsCount;
   closeModal('modal-comm');
   for (let i = 1; i <= unitsCount; i++) {
-    const data = { ...baseData, name: `${baseName} — יחידה ${i}`, parentGroupId: groupId, unitIndex: i, totalUnits: unitsCount };
+    const data = { ...baseData, price: unitPrice, name: `${baseName} — יחידה ${i}`, parentGroupId: groupId, unitIndex: i, totalUnits: unitsCount };
     if (IS_CONFIGURED) await db.ref('commemorations').push(data);
     else allComms['c'+(Date.now()+i)] = data;
   }
