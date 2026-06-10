@@ -4,6 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>ניהול הנצחות - טהרת המשפחה</title>
+  <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 38 38'%3E%3Ccircle cx='19' cy='19' r='19' fill='%234A3060'/%3E%3Cpath d='M19 6C19 6 11 15 11 21a8 8 0 0 0 16 0C27 15 19 6 19 6z' fill='%23E8CC80'/%3E%3Cpath d='M19 10C19 10 14 17 14 21a5 5 0 0 0 10 0C24 17 19 10 19 10z' fill='white' opacity='0.8'/%3E%3Ctext x='19' y='25' text-anchor='middle' font-family='Heebo,sans-serif' font-size='8' font-weight='800' fill='%234A3060'%3E%D7%98.%D7%9E%3C/text%3E%3C/svg%3E">
   <link href="https://fonts.googleapis.com/css2?family=Heebo:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
   <style>
     :root {
@@ -577,7 +578,10 @@
       </div>
       <div id="nav-viewer-section" style="display:none">
         <div class="nav-section-title">צפייה</div>
-        <div class="nav-item active" onclick="showPage('search')" data-page="search">
+        <div class="nav-item active" onclick="showPage('projects')" data-page="projects">
+          <span class="nav-icon">📋</span> כל הפרויקטים
+        </div>
+        <div class="nav-item" onclick="showPage('search')" data-page="search">
           <span class="nav-icon">🔍</span> חיפוש הנצחות
         </div>
       </div>
@@ -617,6 +621,12 @@
         </div>
         <div class="nav-item" onclick="showPage('source-report')" data-page="source-report">
           <span class="nav-icon">📊</span> דוח מקורות
+        </div>
+        <div class="nav-item" onclick="showPage('sold-report')" data-page="sold-report">
+          <span class="nav-icon">🧾</span> דוח הנצחות שנמכרו
+        </div>
+        <div class="nav-item" onclick="showPage('unassigned-report')" data-page="unassigned-report">
+          <span class="nav-icon">📦</span> פריטים ללא הנצחה
         </div>
         <div class="nav-item" onclick="showPage('export-excel')" data-page="export-excel">
           <span class="nav-icon">📥</span> ייצוא לאקסל
@@ -1074,6 +1084,13 @@ let selectedExportProjects = new Set();
 let drawerProjectId = null;
 let _projectsPageEntries = [];
 let _projectsCommsList = null;
+let _adminProjectsEntries = [];
+let _adminProjectsCommsCounts = {};
+let _adminProjectsSort = { key: 'priority', dir: 1 };
+let _soldReportData = [];
+let _soldReportSort = { key: 'soldAt', dir: -1 };
+let _unassignedReportData = [];
+let _unassignedReportSort = { key: 'projectName', dir: 1 };
 
 // Demo data for unconfigured mode
 const DEMO_TYPES = {
@@ -1382,6 +1399,8 @@ function showPage(page, projectId) {
     'capture-history': renderCaptureHistoryPage,
     'sale-history': renderSaleHistoryPage,
     'source-report': renderSourceReportPage,
+    'sold-report': renderSoldReportPage,
+    'unassigned-report': renderUnassignedReportPage,
     'signs-management': renderSignsPage,
     'export-excel': renderExportExcelPage,
     'about': renderAboutPage,
@@ -1400,8 +1419,8 @@ async function renderProjectsPage() {
 
   if (IS_CONFIGURED) await loadProjects();
 
-  const isAdmin = currentUser.role === 'admin';
-  // Non-admin: only non-closed; Admin: all projects
+  const isAdmin = currentUser.role === 'admin' || currentUser.role === 'viewer';
+  // Non-admin: only non-closed; Admin/viewer: all projects
   _projectsPageEntries = Object.entries(allProjects)
     .filter(([, p]) => isAdmin ? true : getProjectStatus(p) !== 'closed')
     .sort((a, b) => (b[1].createdAt || 0) - (a[1].createdAt || 0));
@@ -1651,7 +1670,7 @@ function renderCommCard(id, c, blockedByWhole) {
   }
 
   let actions = '';
-  if (isProjectActive && !isBlocked && !isDisabled) {
+  if (isProjectActive && !isBlocked && !isDisabled && currentUser.role !== 'viewer') {
     if (c.status === 'available') {
       actions = `<div class="comm-actions">
         <button class="btn btn-primary btn-sm" onclick="event.stopPropagation();openCapture('${id}')" style="flex:1;">✋ תפוס</button>
@@ -1911,7 +1930,7 @@ async function confirmSell() {
     // Log sale
     await db.ref('saleLog').push({
       commId, commName: current.name || '', projectId: current.projectId || currentProjectId || '',
-      donorName, donorPhone,
+      donorName, donorPhone, fundraiserName: current.captureFundraiserName || null,
       soldBy: currentUser.uid, soldByName: currentUser.displayName,
       soldAt, price: current.price || 0, directSell: isDirectSell
     });
@@ -2007,8 +2026,9 @@ function openCommDetail(commId) {
   document.getElementById('detail-title').textContent = c.name;
   document.getElementById('detail-content').innerHTML = html;
 
+  const isViewer = currentUser.role === 'viewer';
   let actionsHtml = `<button class="btn btn-ghost" onclick="closeModal('modal-comm-detail')">סגור</button>`;
-  if (c.status === 'sold' || c.status === 'captured') {
+  if (!isViewer && (c.status === 'sold' || c.status === 'captured')) {
     actionsHtml = `<button class="btn btn-primary btn-sm" onclick="openEditSold('${commId}')">✏️ ערוך פרטים</button>` + actionsHtml;
   }
   if (isAdmin && c.status !== 'available') {
@@ -2315,6 +2335,195 @@ async function renderSourceReportPage() {
       <thead><tr><th>מקור תרומה</th><th style="text-align:center;">נרכשו</th><th style="text-align:center;">תפוסים</th><th style="text-align:center;">סכום</th><th style="text-align:center;">% מסה"כ</th><th style="text-align:center;">נוסח ממתין</th></tr></thead>
       <tbody>${tableRows || '<tr><td colspan="6" style="text-align:center;padding:40px;">אין נתונים</td></tr>'}</tbody>
     </table></div>`;
+}
+
+// ============================================================
+//  SOLD COMMEMORATIONS REPORT
+// ============================================================
+async function renderSoldReportPage() {
+  setTopbar('דוח הנצחות שנמכרו', '');
+  const content = document.getElementById('page-content');
+  if (!IS_CONFIGURED) { content.innerHTML = '<div class="empty-state"><div class="empty-icon">📊</div><h3>זמין רק במצב מחובר</h3></div>'; return; }
+  content.innerHTML = '<div class="empty-state"><div class="empty-icon">⏳</div><h3>טוען...</h3></div>';
+
+  await loadProjects();
+  const snap = await db.ref('commemorations').once('value');
+  const items = [];
+  if (snap.exists()) snap.forEach(c => {
+    const v = c.val();
+    if (v.status !== 'sold') return;
+    items.push({
+      id: c.key,
+      projectName: (allProjects[v.projectId] && allProjects[v.projectId].name) || '',
+      commName: v.name || '',
+      typeName: allTypes[v.typeId]?.name || (v.isWholeProject ? 'כל הפרויקט' : ''),
+      soldAt: v.soldAt || 0,
+      donorName: v.donorName || '',
+      donorPhone: v.donorPhone || '',
+      donorNumber: v.donorNumber || '',
+      donationNumber: v.donationNumber || '',
+      fundraiserName: v.captureFundraiserName || '',
+      donationSource: v.donationSource || '',
+      price: v.price || 0
+    });
+  });
+
+  _soldReportData = items;
+  if (!_soldReportSort.key) _soldReportSort = { key: 'soldAt', dir: -1 };
+
+  content.innerHTML = `
+    <div class="filters-bar" style="flex-wrap:wrap;gap:10px;">
+      <input class="filter-select" id="sold-report-search" placeholder="חיפוש לפי שם תורם, פרויקט, סוג, מס׳ תורם..." style="min-width:240px;" oninput="renderSoldReportTable()">
+    </div>
+    <div class="table-wrap"><table class="data-table">
+      <thead><tr>
+        <th style="cursor:pointer;" onclick="sortSoldReport('projectName')">פרויקט${reportSortArrow(_soldReportSort,'projectName')}</th>
+        <th style="cursor:pointer;" onclick="sortSoldReport('commName')">הנצחה${reportSortArrow(_soldReportSort,'commName')}</th>
+        <th style="cursor:pointer;" onclick="sortSoldReport('typeName')">סוג${reportSortArrow(_soldReportSort,'typeName')}</th>
+        <th style="cursor:pointer;" onclick="sortSoldReport('soldAt')">תאריך מכירה${reportSortArrow(_soldReportSort,'soldAt')}</th>
+        <th style="cursor:pointer;" onclick="sortSoldReport('donorName')">שם תורם${reportSortArrow(_soldReportSort,'donorName')}</th>
+        <th>טלפון</th>
+        <th style="cursor:pointer;" onclick="sortSoldReport('donorNumber')">מס׳ תורם${reportSortArrow(_soldReportSort,'donorNumber')}</th>
+        <th>מס׳ קבלה</th>
+        <th style="cursor:pointer;" onclick="sortSoldReport('fundraiserName')">מתרים${reportSortArrow(_soldReportSort,'fundraiserName')}</th>
+        <th>מקור</th>
+        <th style="cursor:pointer;" onclick="sortSoldReport('price')">סכום${reportSortArrow(_soldReportSort,'price')}</th>
+      </tr></thead>
+      <tbody id="sold-report-tbody"></tbody>
+    </table></div>`;
+  renderSoldReportTable();
+}
+
+function reportSortArrow(sortState, key) {
+  if (sortState.key !== key) return '';
+  return sortState.dir === 1 ? ' ▲' : ' ▼';
+}
+
+function sortSoldReport(key) {
+  if (_soldReportSort.key === key) _soldReportSort.dir *= -1;
+  else _soldReportSort = { key, dir: 1 };
+  renderSoldReportTable();
+}
+
+function renderSoldReportTable() {
+  const q = (document.getElementById('sold-report-search')?.value || '').trim().toLowerCase();
+  let items = _soldReportData;
+  if (q) {
+    items = items.filter(it =>
+      it.donorName.toLowerCase().includes(q) ||
+      it.projectName.toLowerCase().includes(q) ||
+      it.typeName.toLowerCase().includes(q) ||
+      it.commName.toLowerCase().includes(q) ||
+      it.donorNumber.toLowerCase().includes(q) ||
+      it.donationNumber.toLowerCase().includes(q) ||
+      it.donorPhone.toLowerCase().includes(q)
+    );
+  }
+  const { key, dir } = _soldReportSort;
+  items = [...items].sort((a,b) => {
+    const va = a[key], vb = b[key];
+    if (typeof va === 'number') return (va - vb) * dir;
+    return String(va).localeCompare(String(vb), 'he') * dir;
+  });
+
+  const rows = items.map(it => `<tr>
+    <td>${esc(it.projectName)}</td>
+    <td><strong>${esc(it.commName)}</strong></td>
+    <td>${esc(it.typeName)}</td>
+    <td>${it.soldAt ? formatDate(it.soldAt) : '-'}</td>
+    <td>${esc(it.donorName)}</td>
+    <td>${esc(it.donorPhone)}</td>
+    <td>${esc(it.donorNumber)}</td>
+    <td>${esc(it.donationNumber)}</td>
+    <td>${esc(it.fundraiserName)}</td>
+    <td>${esc(it.donationSource)}</td>
+    <td style="font-weight:700;color:var(--accent);">₪${it.price.toLocaleString()}</td>
+  </tr>`).join('');
+
+  document.getElementById('sold-report-tbody').innerHTML = rows || '<tr><td colspan="11" style="text-align:center;padding:40px;color:var(--text-muted)">אין הנצחות שנמכרו</td></tr>';
+}
+
+// ============================================================
+//  UNASSIGNED ITEMS REPORT (no donor / not sold yet)
+// ============================================================
+async function renderUnassignedReportPage() {
+  setTopbar('פריטים ללא הנצחה', '');
+  const content = document.getElementById('page-content');
+  if (!IS_CONFIGURED) { content.innerHTML = '<div class="empty-state"><div class="empty-icon">📦</div><h3>זמין רק במצב מחובר</h3></div>'; return; }
+  content.innerHTML = '<div class="empty-state"><div class="empty-icon">⏳</div><h3>טוען...</h3></div>';
+
+  await loadProjects();
+  const snap = await db.ref('commemorations').once('value');
+  const statusLabels = { available: 'פנויה', captured: 'תפוסה', sold: 'נמכרה' };
+  const items = [];
+  if (snap.exists()) snap.forEach(c => {
+    const v = c.val();
+    if (v.status === 'sold') return;
+    items.push({
+      id: c.key,
+      projectName: (allProjects[v.projectId] && allProjects[v.projectId].name) || '',
+      commName: v.name || '',
+      typeName: allTypes[v.typeId]?.name || (v.isWholeProject ? 'כל הפרויקט' : ''),
+      status: v.status || '',
+      statusLabel: statusLabels[v.status] || '',
+      price: v.price || 0
+    });
+  });
+
+  _unassignedReportData = items;
+  if (!_unassignedReportSort.key) _unassignedReportSort = { key: 'projectName', dir: 1 };
+
+  content.innerHTML = `
+    <div class="filters-bar" style="flex-wrap:wrap;gap:10px;">
+      <input class="filter-select" id="unassigned-report-search" placeholder="חיפוש לפי פרויקט, שם, סוג, סטאטוס..." style="min-width:240px;" oninput="renderUnassignedReportTable()">
+    </div>
+    <div class="table-wrap"><table class="data-table">
+      <thead><tr>
+        <th style="cursor:pointer;" onclick="sortUnassignedReport('projectName')">פרויקט${reportSortArrow(_unassignedReportSort,'projectName')}</th>
+        <th style="cursor:pointer;" onclick="sortUnassignedReport('commName')">הנצחה${reportSortArrow(_unassignedReportSort,'commName')}</th>
+        <th style="cursor:pointer;" onclick="sortUnassignedReport('typeName')">סוג${reportSortArrow(_unassignedReportSort,'typeName')}</th>
+        <th style="cursor:pointer;" onclick="sortUnassignedReport('statusLabel')">סטאטוס${reportSortArrow(_unassignedReportSort,'statusLabel')}</th>
+        <th style="cursor:pointer;" onclick="sortUnassignedReport('price')">מחיר${reportSortArrow(_unassignedReportSort,'price')}</th>
+      </tr></thead>
+      <tbody id="unassigned-report-tbody"></tbody>
+    </table></div>`;
+  renderUnassignedReportTable();
+}
+
+function sortUnassignedReport(key) {
+  if (_unassignedReportSort.key === key) _unassignedReportSort.dir *= -1;
+  else _unassignedReportSort = { key, dir: 1 };
+  renderUnassignedReportTable();
+}
+
+function renderUnassignedReportTable() {
+  const q = (document.getElementById('unassigned-report-search')?.value || '').trim().toLowerCase();
+  let items = _unassignedReportData;
+  if (q) {
+    items = items.filter(it =>
+      it.projectName.toLowerCase().includes(q) ||
+      it.commName.toLowerCase().includes(q) ||
+      it.typeName.toLowerCase().includes(q) ||
+      it.statusLabel.toLowerCase().includes(q)
+    );
+  }
+  const { key, dir } = _unassignedReportSort;
+  items = [...items].sort((a,b) => {
+    const va = a[key], vb = b[key];
+    if (typeof va === 'number') return (va - vb) * dir;
+    return String(va).localeCompare(String(vb), 'he') * dir;
+  });
+
+  const statusTagClass = { available: 'tag-success', captured: 'tag-warning' };
+  const rows = items.map(it => `<tr>
+    <td>${esc(it.projectName)}</td>
+    <td><strong>${esc(it.commName)}</strong></td>
+    <td>${esc(it.typeName)}</td>
+    <td><span class="tag ${statusTagClass[it.status]||''}">${esc(it.statusLabel)}</span></td>
+    <td>₪${it.price.toLocaleString()}</td>
+  </tr>`).join('');
+
+  document.getElementById('unassigned-report-tbody').innerHTML = rows || '<tr><td colspan="5" style="text-align:center;padding:40px;color:var(--text-muted)">אין פריטים</td></tr>';
 }
 
 // ============================================================
@@ -2869,12 +3078,65 @@ async function renderAdminProjectsPage() {
     });
   }
 
+  _adminProjectsCommsCounts = commsCounts;
+  _adminProjectsEntries = Object.entries(allProjects);
+  if (!_adminProjectsSort.key) _adminProjectsSort = { key: 'priority', dir: 1 };
+
+  document.getElementById('page-content').innerHTML = `
+    <div class="filters-bar" style="flex-wrap:wrap;gap:10px;">
+      <input class="filter-select" id="filter-admin-project-text" placeholder="חיפוש לפי שם..." style="min-width:200px;" oninput="renderAdminProjectsTable()">
+    </div>
+    <div class="table-wrap">
+      <table class="data-table">
+        <thead><tr>
+          <th style="cursor:pointer;" onclick="sortAdminProjects('priority')">עדיפות${adminProjectsSortArrow('priority')}</th>
+          <th style="cursor:pointer;" onclick="sortAdminProjects('name')">שם פרויקט${adminProjectsSortArrow('name')}</th>
+          <th style="cursor:pointer;" onclick="sortAdminProjects('stage')">שלב / צפי${adminProjectsSortArrow('stage')}</th>
+          <th style="cursor:pointer;" onclick="sortAdminProjects('status')">סטאטוס${adminProjectsSortArrow('status')}</th>
+          <th>פעולות</th>
+        </tr></thead>
+        <tbody id="admin-projects-tbody"></tbody>
+      </table>
+    </div>`;
+  renderAdminProjectsTable();
+}
+
+function adminProjectsSortArrow(key) {
+  if (_adminProjectsSort.key !== key) return '';
+  return _adminProjectsSort.dir === 1 ? ' ▲' : ' ▼';
+}
+
+function sortAdminProjects(key) {
+  if (_adminProjectsSort.key === key) {
+    _adminProjectsSort.dir *= -1;
+  } else {
+    _adminProjectsSort = { key, dir: 1 };
+  }
+  renderAdminProjectsPage();
+}
+
+function renderAdminProjectsTable() {
   const stageColors = { 'תכנון': '#5C6BC0', 'בניה': '#F57C00', 'גימור': '#00897B', 'סיום': '#43A047' };
-  const rows = Object.entries(allProjects).sort((a,b) => {
-    const pa = a[1].priority || 3, pb = b[1].priority || 3;
-    if (pa !== pb) return pa - pb;
+  const stageOrder = { 'תכנון': 1, 'בניה': 2, 'גימור': 3, 'סיום': 4 };
+  const statusOrder = { active: 1, completion: 2, finished: 3, closed: 4 };
+  const commsCounts = _adminProjectsCommsCounts;
+  const textFilter = (document.getElementById('filter-admin-project-text')?.value || '').trim().toLowerCase();
+
+  let entries = _adminProjectsEntries;
+  if (textFilter) entries = entries.filter(([,p]) => p.name.toLowerCase().includes(textFilter));
+
+  const { key, dir } = _adminProjectsSort;
+  entries = [...entries].sort((a,b) => {
+    let va, vb;
+    if (key === 'priority') { va = a[1].priority || 3; vb = b[1].priority || 3; }
+    else if (key === 'name') { va = a[1].name || ''; vb = b[1].name || ''; return va.localeCompare(vb, 'he') * dir; }
+    else if (key === 'stage') { va = stageOrder[a[1].stage] || 0; vb = stageOrder[b[1].stage] || 0; }
+    else if (key === 'status') { va = statusOrder[getProjectStatus(a[1])] || 0; vb = statusOrder[getProjectStatus(b[1])] || 0; }
+    if (va !== vb) return (va - vb) * dir;
     return (b[1].createdAt||0) - (a[1].createdAt||0);
-  }).map(([id,p]) => {
+  });
+
+  const rows = entries.map(([id,p]) => {
     const pStatus = getProjectStatus(p);
     const statusTag = pStatus === 'active' ? '<span class="tag tag-success">פתוח למכירה</span>' :
                       pStatus === 'completion' ? '<span class="tag tag-completion">להשלמה</span>' :
@@ -2911,13 +3173,7 @@ async function renderAdminProjectsPage() {
     </tr>`;
   }).join('');
 
-  document.getElementById('page-content').innerHTML = `
-    <div class="table-wrap">
-      <table class="data-table">
-        <thead><tr><th>עדיפות</th><th>שם פרויקט</th><th>שלב / צפי</th><th>סטאטוס</th><th>פעולות</th></tr></thead>
-        <tbody>${rows || '<tr><td colspan="5" style="text-align:center;padding:40px;color:var(--text-muted)">אין פרויקטים — צור פרויקט חדש</td></tr>'}</tbody>
-      </table>
-    </div>`;
+  document.getElementById('admin-projects-tbody').innerHTML = rows || '<tr><td colspan="5" style="text-align:center;padding:40px;color:var(--text-muted)">אין פרויקטים — צור פרויקט חדש</td></tr>';
 }
 
 function openProjectModal(id) {
@@ -3013,7 +3269,7 @@ async function renderAdminProjectCommsPage() {
   const canEditComms = isAdmin;
   const statusLabels = { available: 'פנויה', captured: 'תפוסה', sold: 'נמכרה' };
   const statusTagClass = { available: 'tag-success', captured: 'tag-warning', sold: 'tag-gray' };
-  const rows = Object.entries(comms).map(([id,c]) => `
+  const rows = Object.entries(comms).sort((a,b) => (b[1].price||0) - (a[1].price||0)).map(([id,c]) => `
     <tr>
       <td><strong>${esc(c.name)}</strong>${c.isWholeProject ? ' <span class="tag tag-warning" style="font-size:11px;vertical-align:middle;">⭐ כל הפרויקט</span>' : ''}${c.parentGroupId ? ` <span style="font-size:10px;background:#E3F2FD;color:#1565C0;border-radius:4px;padding:1px 5px;font-weight:600;">יחידה ${c.unitIndex||''}/${c.totalUnits||''}</span>` : ''}${c.notes ? `<div style="font-size:12px;color:var(--text-muted);margin-top:2px;">${esc(c.notes)}</div>` : ''}</td>
       <td>${esc(allTypes[c.typeId]?.name||'')}</td>
@@ -3074,6 +3330,7 @@ function editComm(commId) {
   document.getElementById('comm-type-name').value = allTypes[c.typeId]?.name || c.name;
   document.getElementById('comm-price').value = c.price || 0;
   document.getElementById('comm-notes').value = c.notes || '';
+  if (document.getElementById('comm-units-group')) document.getElementById('comm-units-group').style.display = 'none';
   openModal('modal-comm');
 }
 
@@ -3097,11 +3354,17 @@ async function openCommModal(projectId) {
   const overrides = project.typePrices || {};
   const listHtml = availableTypes.map(([id,t]) => {
     const defPrice = overrides[id] !== undefined ? overrides[id] : (t.defaultPrice || 0);
-    return `<div class="checklist-row" id="bulk-row-${id}">
+    return `<div class="checklist-row" id="bulk-row-${id}" style="flex-wrap:wrap;">
       <input type="checkbox" id="bulk-chk-${id}" onchange="toggleBulkRow('${id}')">
       <label for="bulk-chk-${id}" style="flex:1;">${esc(t.name)}</label>
       <input type="number" id="bulk-price-${id}" min="0" value="${defPrice}"
-        style="width:90px;padding:5px 8px;border:2px solid var(--border);border-radius:8px;font-size:13px;" placeholder="₪">
+        style="width:90px;padding:5px 8px;border:2px solid var(--border);border-radius:8px;font-size:13px;" placeholder="₪ סה״כ">
+      <label style="display:flex;align-items:center;gap:4px;font-size:11px;color:var(--text-muted);white-space:nowrap;">
+        <input type="checkbox" id="bulk-units-chk-${id}" onchange="toggleBulkUnits('${id}')">
+        פיצול ל-
+        <input type="number" id="bulk-units-count-${id}" min="2" max="200" value="2" style="width:55px;padding:3px 5px;border:2px solid var(--border);border-radius:6px;font-size:12px;display:none;">
+        יחידות
+      </label>
     </div>`;
   }).join('');
 
@@ -3115,6 +3378,12 @@ function toggleBulkRow(typeId) {
   if (row) row.classList.toggle('checked', chk.checked);
 }
 
+function toggleBulkUnits(typeId) {
+  const chk = document.getElementById(`bulk-units-chk-${typeId}`);
+  const inp = document.getElementById(`bulk-units-count-${typeId}`);
+  if (inp) inp.style.display = chk.checked ? '' : 'none';
+}
+
 async function saveBulkComms() {
   const types = Object.keys(allTypes);
   const toAdd = [];
@@ -3124,7 +3393,9 @@ async function saveBulkComms() {
     const priceEl = document.getElementById(`bulk-price-${id}`);
     const price = priceEl ? (parseFloat(priceEl.value) || 0) : 0;
     const name = allTypes[id]?.name || '';
-    toAdd.push({ typeId: id, name, price });
+    const unitsChk = document.getElementById(`bulk-units-chk-${id}`);
+    const unitsCount = unitsChk?.checked ? (parseInt(document.getElementById(`bulk-units-count-${id}`)?.value) || 1) : 1;
+    toAdd.push({ typeId: id, name, price, unitsCount });
   });
   if (!toAdd.length) { showToast('נא לסמן לפחות סוג אחד', 'warning'); return; }
 
@@ -3135,16 +3406,32 @@ async function saveBulkComms() {
     soldBy: null, soldByName: null, soldAt: null, notes: null
   };
 
+  const records = [];
+  let totalCount = 0;
+  toAdd.forEach(t => {
+    if (t.unitsCount > 1) {
+      const groupId = 'grp_' + Date.now() + Math.random().toString(36).slice(2);
+      const unitPrice = t.price / t.unitsCount;
+      for (let i = 1; i <= t.unitsCount; i++) {
+        records.push({ ...baseData, typeId: t.typeId, name: `${t.name} — יחידה ${i}`, price: unitPrice, parentGroupId: groupId, unitIndex: i, totalUnits: t.unitsCount });
+        totalCount++;
+      }
+    } else {
+      records.push({ ...baseData, typeId: t.typeId, name: t.name, price: t.price });
+      totalCount++;
+    }
+  });
+
   if (!IS_CONFIGURED) {
-    toAdd.forEach(t => { allComms['c'+Date.now()+Math.random()] = { ...baseData, ...t }; });
+    records.forEach(r => { allComms['c'+Date.now()+Math.random()] = r; });
     closeModal('modal-bulk-comm'); renderAdminProjectCommsPage();
-    showToast(`נוספו ${toAdd.length} הנצחות ✅`, 'success'); return;
+    showToast(`נוספו ${totalCount} הנצחות ✅`, 'success'); return;
   }
   try {
-    const promises = toAdd.map(t => db.ref('commemorations').push({ ...baseData, ...t }));
+    const promises = records.map(r => db.ref('commemorations').push(r));
     await Promise.all(promises);
     closeModal('modal-bulk-comm'); renderAdminProjectCommsPage();
-    showToast(`נוספו ${toAdd.length} הנצחות ✅`, 'success');
+    showToast(`נוספו ${totalCount} הנצחות ✅`, 'success');
   } catch(e) {
     showToast('שגיאה: ' + e.message, 'error');
   }
