@@ -590,13 +590,13 @@
         <div class="nav-item" onclick="showPage('admin-projects')" data-page="admin-projects">
           <span class="nav-icon">📁</span> ניהול פרויקטים
         </div>
-        <div class="nav-item" onclick="showPage('admin-users')" data-page="admin-users">
+        <div class="nav-item" id="nav-admin-users" onclick="showPage('admin-users')" data-page="admin-users">
           <span class="nav-icon">👥</span> ניהול משתמשים
         </div>
-        <div class="nav-item" onclick="showPage('admin-types')" data-page="admin-types">
+        <div class="nav-item" id="nav-admin-types" onclick="showPage('admin-types')" data-page="admin-types">
           <span class="nav-icon">🏷️</span> סוגי הנצחות
         </div>
-        <div class="nav-item" onclick="showPage('admin-settings')" data-page="admin-settings">
+        <div class="nav-item" id="nav-admin-settings" onclick="showPage('admin-settings')" data-page="admin-settings">
           <span class="nav-icon">⚙️</span> הגדרות
         </div>
         <div class="nav-section-title" style="margin-top:6px;">צפייה וייצוא</div>
@@ -634,7 +634,7 @@
       </div>
       <div style="margin-top:auto;padding-top:12px;">
         <div class="nav-section-title">כללי</div>
-        <div class="nav-item" onclick="showPage('about')" data-page="about">
+        <div class="nav-item" id="nav-about" onclick="showPage('about')" data-page="about">
           <span class="nav-icon">ℹ️</span> אודות
         </div>
       </div>
@@ -1223,10 +1223,16 @@ async function startApp() {
     document.getElementById('nav-admin-section').style.display = 'block';
     document.getElementById('nav-user-section').style.display = 'none';
     document.getElementById('nav-viewer-section').style.display = 'none';
+    const seniorHidden = currentUser.role !== 'admin';
+    document.getElementById('nav-admin-users').style.display = seniorHidden ? 'none' : '';
+    document.getElementById('nav-admin-types').style.display = seniorHidden ? 'none' : '';
+    document.getElementById('nav-admin-settings').style.display = seniorHidden ? 'none' : '';
+    document.getElementById('nav-expired').style.display = seniorHidden ? 'none' : '';
   } else if (currentUser.role === 'viewer') {
     document.getElementById('nav-admin-section').style.display = 'none';
     document.getElementById('nav-user-section').style.display = 'none';
     document.getElementById('nav-viewer-section').style.display = 'block';
+    document.getElementById('nav-about').style.display = 'none';
   } else {
     document.getElementById('nav-admin-section').style.display = 'none';
     document.getElementById('nav-user-section').style.display = 'block';
@@ -1419,8 +1425,8 @@ async function renderProjectsPage() {
 
   if (IS_CONFIGURED) await loadProjects();
 
-  const isAdmin = currentUser.role === 'admin' || currentUser.role === 'viewer';
-  // Non-admin: only non-closed; Admin/viewer: all projects
+  const isAdmin = currentUser.role === 'admin' || currentUser.role === 'viewer' || currentUser.role === 'senior';
+  // Non-admin/senior/viewer: only non-closed; Admin/senior/viewer: all projects
   _projectsPageEntries = Object.entries(allProjects)
     .filter(([, p]) => isAdmin ? true : getProjectStatus(p) !== 'closed')
     .sort((a, b) => (b[1].createdAt || 0) - (a[1].createdAt || 0));
@@ -2036,7 +2042,7 @@ function openCommDetail(commId) {
   if (isAdmin && c.status !== 'available') {
     actionsHtml = `<button class="btn btn-danger btn-sm" onclick="adminResetComm('${commId}')">↩ איפוס לפנוי</button>` + actionsHtml;
   }
-  if (isAdmin && c.status === 'available') {
+  if (currentUser.role === 'admin' && c.status === 'available') {
     const disLabel = c.isDisabled ? '🔓 החזר למכירה' : '🔒 סמן לא למכירה';
     actionsHtml = `<button class="btn btn-ghost btn-sm" onclick="adminToggleDisabled('${commId}')">${disLabel}</button>` + actionsHtml;
   }
@@ -3009,10 +3015,11 @@ function renderDrawerView() {
     </div>
   `;
 
+  const isAdminUser = currentUser.role === 'admin';
   document.getElementById('drawer-footer').innerHTML = `
     <button class="btn btn-ghost btn-sm" onclick="showPage('admin-project-comms','${id}')">✏️ ניהול הנצחות</button>
-    <button class="btn btn-primary btn-sm" style="margin-right:auto;" onclick="startDrawerEdit()">📝 עריכה</button>
-    <button class="btn btn-danger btn-sm" onclick="deleteProject('${id}','${esc(p.name)}');closeProjectDrawer()">🗑️ מחק</button>
+    ${isAdminUser ? `<button class="btn btn-primary btn-sm" style="margin-right:auto;" onclick="startDrawerEdit()">📝 עריכה</button>
+    <button class="btn btn-danger btn-sm" onclick="deleteProject('${id}','${esc(p.name)}');closeProjectDrawer()">🗑️ מחק</button>` : ''}
   `;
 }
 
@@ -3078,6 +3085,7 @@ function startDrawerEdit() {
 }
 
 async function saveDrawerProject() {
+  if (currentUser.role !== 'admin') return;
   const id = drawerProjectId;
   const name = document.getElementById('drawer-name').value.trim();
   if (!name) { showToast('נא להזין שם פרויקט', 'error'); return; }
@@ -3105,7 +3113,7 @@ async function saveDrawerProject() {
 }
 
 async function renderAdminProjectsPage() {
-  setTopbar('ניהול פרויקטים', `<button class="btn btn-primary btn-sm" onclick="openProjectModal()">➕ פרויקט חדש</button>`);
+  setTopbar('ניהול פרויקטים', currentUser.role === 'admin' ? `<button class="btn btn-primary btn-sm" onclick="openProjectModal()">➕ פרויקט חדש</button>` : '');
   if (IS_CONFIGURED) await loadProjects();
 
   // Load comms counts for captured/sold display
@@ -3219,7 +3227,7 @@ function renderAdminProjectsTable() {
         <div class="btn-row">
           <button class="btn btn-ghost btn-sm" onclick="showPage('admin-project-comms','${id}')">✏️ הנצחות</button>
           <button class="btn btn-ghost btn-sm" onclick="openProjectDrawer('${id}')">🔍 פרטים</button>
-          <button class="btn btn-danger btn-sm" onclick="deleteProject('${id}','${esc(p.name)}')">🗑️ מחק</button>
+          ${currentUser.role === 'admin' ? `<button class="btn btn-danger btn-sm" onclick="deleteProject('${id}','${esc(p.name)}')">🗑️ מחק</button>` : ''}
         </div>
       </td>
     </tr>`;
@@ -3246,6 +3254,7 @@ function openProjectModal(id) {
 }
 
 async function saveProject() {
+  if (currentUser.role !== 'admin') return;
   const name = document.getElementById('project-name').value.trim();
   const description = document.getElementById('project-description').value.trim();
   const notes = document.getElementById('project-notes').value.trim();
@@ -3277,6 +3286,7 @@ async function saveProject() {
 }
 
 async function deleteProject(id, name) {
+  if (currentUser.role !== 'admin') return;
   if (!confirm(`למחוק את הפרויקט "${name}"?\nפעולה זו אינה ניתנת לביטול.`)) return;
   if (!IS_CONFIGURED) {
     delete allProjects[id];
@@ -3318,7 +3328,7 @@ async function renderAdminProjectCommsPage() {
   }
 
   const isAdmin = currentUser.role === 'admin';
-  const canEditComms = isAdmin;
+  const canEditComms = isAdmin || currentUser.role === 'senior';
   const statusLabels = { available: 'פנויה', captured: 'תפוסה', sold: 'נמכרה' };
   const statusTagClass = { available: 'tag-success', captured: 'tag-warning', sold: 'tag-gray' };
   const rows = Object.entries(comms).sort((a,b) => (b[1].price||0) - (a[1].price||0)).map(([id,c]) => `
@@ -3636,6 +3646,7 @@ async function saveFreeComm() {
 //  ADMIN: USERS
 // ============================================================
 async function renderAdminUsersPage() {
+  if (currentUser.role !== 'admin') { showPage('projects'); return; }
   setTopbar('ניהול משתמשים', `<button class="btn btn-primary btn-sm" onclick="openUserModal()">➕ משתמש חדש</button>`);
 
   let users = {};
@@ -3718,6 +3729,7 @@ async function deleteUser(id) {
 //  ADMIN: TYPES
 // ============================================================
 async function renderAdminTypesPage() {
+  if (currentUser.role !== 'admin') { showPage('projects'); return; }
   setTopbar('סוגי הנצחות', '');
   const rows = Object.entries(allTypes).map(([id,t]) => `
     <tr>
@@ -3820,6 +3832,7 @@ async function deleteType(id) {
 //  ADMIN: SETTINGS
 // ============================================================
 function renderAdminSettingsPage() {
+  if (currentUser.role !== 'admin') { showPage('projects'); return; }
   setTopbar('הגדרות מערכת', '');
   document.getElementById('page-content').innerHTML = `
     <div class="card">
@@ -4030,6 +4043,7 @@ async function checkWordingReminders() {
 //  ABOUT PAGE
 // ============================================================
 function renderAboutPage() {
+  if (currentUser.role === 'viewer') { showPage('search'); return; }
   setTopbar('אודות המערכת', '');
   document.getElementById('page-content').innerHTML = `
     <div class="card" style="max-width:680px;margin:0 auto;text-align:center;padding:48px 40px;">
@@ -4128,7 +4142,7 @@ async function runSearch() {
 
   resultsEl.innerHTML = `<div class="empty-state"><div class="empty-icon">⏳</div><h3>מחפש...</h3></div>`;
 
-  const isAdmin = currentUser.role === 'admin';
+  const isAdmin = currentUser.role === 'admin' || currentUser.role === 'viewer' || currentUser.role === 'senior';
 
   const matchingProjects = Object.entries(allProjects).filter(([id, p]) => {
     const pSt = getProjectStatus(p);
@@ -4383,6 +4397,7 @@ function updateExpiredBadge(count) {
 }
 
 async function renderAdminExpiredPage() {
+  if (currentUser.role !== 'admin') { showPage('projects'); return; }
   setTopbar('לטיפול — תפיסות שפג תוקפן', '');
   const content = document.getElementById('page-content');
   content.innerHTML = '<div class="empty-state"><div class="empty-icon">⏳</div><h3>טוען...</h3></div>';
