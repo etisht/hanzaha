@@ -1698,7 +1698,7 @@ function renderCommCard(id, c, blockedByWhole) {
   return `<div class="comm-card ${cardClass}"${cardStyle} onclick="openCommDetail('${id}')">
     <span class="comm-status-badge ${badgeClass}">${badgeLabel}</span>
     <div class="comm-card-name">${wholeProjectBadge}${unitBadge}${esc(c.name)}</div>
-    <div class="comm-card-type">${esc(type)}</div>
+    ${type && type !== c.name ? `<div class="comm-card-type">${esc(type)}</div>` : ''}
     <div class="comm-card-price">₪${(c.price||0).toLocaleString()}</div>
     ${meta}${actions}
   </div>`;
@@ -2366,7 +2366,8 @@ async function renderSoldReportPage() {
       donationNumber: v.donationNumber || '',
       fundraiserName: v.captureFundraiserName || '',
       donationSource: v.donationSource || '',
-      price: v.price || 0
+      price: v.price || 0,
+      raw: v
     });
   });
 
@@ -2428,7 +2429,7 @@ function renderSoldReportTable() {
     return String(va).localeCompare(String(vb), 'he') * dir;
   });
 
-  const rows = items.map(it => `<tr>
+  const rows = items.map(it => `<tr style="cursor:pointer;" onclick="openSoldReportDetail('${it.id}')">
     <td>${esc(it.projectName)}</td>
     <td><strong>${esc(it.commName)}</strong></td>
     <td>${esc(it.typeName)}</td>
@@ -2443,6 +2444,55 @@ function renderSoldReportTable() {
   </tr>`).join('');
 
   document.getElementById('sold-report-tbody').innerHTML = rows || '<tr><td colspan="11" style="text-align:center;padding:40px;color:var(--text-muted)">אין הנצחות שנמכרו</td></tr>';
+}
+
+function openSoldReportDetail(commId) {
+  const item = (_soldReportData || []).find(it => it.id === commId);
+  if (!item) return;
+  const c = item.raw;
+
+  let html = `
+    <div class="info-row"><span class="info-label">פרויקט:</span><span>${esc(item.projectName)}</span></div>
+    <div class="info-row"><span class="info-label">סוג:</span><span>${esc(item.typeName)}</span></div>
+    <div class="info-row"><span class="info-label">מחיר:</span><span style="font-weight:700;color:var(--accent)">₪${(c.price||0).toLocaleString()}</span></div>
+    <hr class="divider">
+    <div class="info-row"><span class="info-label">תורם:</span><span>${esc(c.donorName||'')}</span></div>
+    <div class="info-row"><span class="info-label">טלפון:</span><span>${esc(c.donorPhone||'')}</span></div>
+    <div class="info-row"><span class="info-label">מייל:</span><span>${esc(c.donorEmail||'-')}</span></div>
+    <div class="info-row"><span class="info-label">מס׳ תורם:</span><span>${esc(c.donorNumber||'-')}</span></div>
+    <div class="info-row"><span class="info-label">נוסח הנצחה:</span><span style="white-space:pre-wrap;">${esc(c.commemorationNames||'-')}</span></div>
+    <div class="info-row"><span class="info-label">מקור:</span><span>${esc(c.donationSource||'-')}</span></div>
+    ${c.secondaryFundraiser ? `<div class="info-row"><span class="info-label">מתרים משני:</span><span>${esc(c.secondaryFundraiser)}</span></div>` : ''}
+    <div class="info-row"><span class="info-label">אמצעי תשלום:</span><span>${esc(c.paymentMethod||'-')}</span></div>
+    <div class="info-row"><span class="info-label">מס׳ קבלה:</span><span>${esc(c.donationNumber||'-')}</span></div>
+    ${c.saleNotes ? `<div class="info-row"><span class="info-label">הערות:</span><span>${esc(c.saleNotes)}</span></div>` : ''}
+    <div class="info-row"><span class="info-label">נמכר ע"י:</span><span>${esc(c.soldByName||'')}</span></div>
+    <div class="info-row"><span class="info-label">תאריך:</span><span>${c.soldAt ? formatDate(c.soldAt) : '-'}</span></div>
+    <hr class="divider">
+    <div style="font-size:13px;font-weight:700;color:var(--primary-dark);margin-bottom:8px;">✅ סטאטוס הנצחה</div>`;
+
+  ['approvalChecked:אישור הנצחה', 'signPrinted:הדפסת שלט', 'signHung:תליית שלט'].forEach(pair => {
+    const [field, label] = pair.split(':');
+    const isChecked = !!c[field];
+    html += `<div class="checklist-row${isChecked ? ' checked' : ''}">
+      <input type="checkbox" ${isChecked ? 'checked' : ''} disabled>
+      <label>${label}</label>
+      ${isChecked ? '<span style="color:var(--success);font-size:12px;">✓</span>' : ''}
+    </div>`;
+  });
+
+  html += `<hr class="divider">
+    <div style="font-size:13px;font-weight:700;color:var(--primary-dark);margin-bottom:8px;">🖼️ תמונת הנצחה</div>`;
+  if (c.imageUrl) {
+    html += `<img src="${esc(c.imageUrl)}" class="image-preview" alt="תמונת הנצחה">`;
+  } else {
+    html += `<div style="color:var(--text-muted);font-size:13px;margin-bottom:8px;">אין תמונה עדיין</div>`;
+  }
+
+  document.getElementById('detail-title').textContent = item.commName;
+  document.getElementById('detail-content').innerHTML = html;
+  document.getElementById('detail-actions').innerHTML = `<button class="btn btn-ghost" onclick="closeModal('modal-comm-detail')">סגור</button>`;
+  openModal('modal-comm-detail');
 }
 
 // ============================================================
@@ -4228,7 +4278,7 @@ function renderSearchCommCard(id, c) {
       <span class="priority-badge priority-${priority}" style="font-size:9px;padding:1px 4px;margin-left:3px;">${priority}</span>${esc(project.name)}
     </div>
     <div class="comm-card-name" style="padding-left:0;">${wholeProjectBadge}${unitBadgeSearch}${esc(c.name)}</div>
-    <div class="comm-card-type">${esc(type)}</div>
+    ${type && type !== c.name ? `<div class="comm-card-type">${esc(type)}</div>` : ''}
     <div class="comm-card-price">₪${(c.price||0).toLocaleString()}</div>
     ${actions}
   </div>`;
