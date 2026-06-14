@@ -1720,6 +1720,7 @@ function renderCommCard(id, c, blockedByWhole) {
 //  CAPTURE
 // ============================================================
 function openCapture(commId) {
+  if (currentUser.role === 'viewer') return;
   const c = allComms[commId];
   if (!c || c.status !== 'available') { showToast('ההנצחה כבר לא זמינה', 'error'); renderCommsGrid(); return; }
   if (!c.isWholeProject) {
@@ -1828,6 +1829,7 @@ async function updateCaptureLogRelease(commId, releasedAt, reason) {
 let pendingDirectSell = false;
 
 function openDirectSell(commId) {
+  if (currentUser.role === 'viewer') return;
   const c = allComms[commId];
   if (!c || c.status !== 'available') { showToast('ההנצחה כבר לא זמינה', 'error'); return; }
   if (!c.isWholeProject) {
@@ -1857,6 +1859,7 @@ function openDirectSell(commId) {
 //  SELL
 // ============================================================
 function openSell(commId) {
+  if (currentUser.role === 'viewer') return;
   const c = allComms[commId];
   if (!c || c.status !== 'captured' || c.capturedBy !== currentUser.uid) {
     showToast('אין באפשרותך למכור הנצחה זו', 'error'); return;
@@ -4278,7 +4281,7 @@ function renderSearchCommCard(id, c) {
   const unitBadgeSearch = c.parentGroupId ? `<span style="font-size:10px;background:#E3F2FD;color:#1565C0;border-radius:4px;padding:1px 5px;font-weight:600;margin-bottom:2px;display:inline-block;">יחידה ${c.unitIndex||''}/${c.totalUnits||''}</span><br>` : '';
 
   let actions = '';
-  if (isProjectActive && !isBlocked) {
+  if (isProjectActive && !isBlocked && currentUser.role !== 'viewer') {
     if (c.status === 'available') {
       actions = `<div class="comm-actions">
         <button class="btn btn-primary btn-sm" onclick="event.stopPropagation();openCapture('${id}')" style="flex:1;">✋ תפוס</button>
