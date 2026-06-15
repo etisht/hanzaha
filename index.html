@@ -1018,6 +1018,92 @@
   </div>
 </div>
 
+<!-- EMAILJS HELP -->
+<div class="modal-backdrop" id="modal-emailjs-help">
+  <div class="modal" style="max-width:680px;max-height:85vh;overflow-y:auto;">
+    <div class="modal-title">📧 מדריך הגדרת מערכת המיילים (EmailJS)</div>
+    <div style="font-size:14px;line-height:1.8;text-align:right;">
+      <p>מדריך זה מסביר כיצד לחבר את המערכת לשליחת מיילים אוטומטיים — לדוגמה, תזכורות על "נוסח הנצחה" שלא נמסר עדיין על ידי תורם.</p>
+      <p>המערכת מבוססת על שירות חינמי בשם <strong>EmailJS</strong>, המאפשר לשלוח מיילים ישירות מהאתר, ללא צורך בשרת נפרד. התוכנית החינמית מאפשרת כ-200 מיילים בחודש — מספיק בהחלט לתזכורות שוטפות.</p>
+
+      <h3 style="margin-top:18px;">שלב 1: יצירת חשבון EmailJS</h3>
+      <ol>
+        <li>גשו לאתר: <a href="https://www.emailjs.com" target="_blank">emailjs.com</a></li>
+        <li>לחצו על <strong>Sign Up</strong> ופתחו חשבון חינמי (אפשר עם חשבון Google).</li>
+        <li>אשרו את כתובת המייל שלכם אם תתבקשו.</li>
+      </ol>
+
+      <h3 style="margin-top:18px;">שלב 2: חיבור שירות מייל (Email Service)</h3>
+      <ol>
+        <li>בלוח הבקרה, פתחו את <strong>Email Services</strong>.</li>
+        <li>לחצו <strong>Add New Service</strong>.</li>
+        <li>בחרו את הספק המתאים — מומלץ <strong>Gmail</strong> (הכי פשוט לחבר).</li>
+        <li>מומלץ ליצור חשבון Gmail ייעודי לעמותה ולהתחבר איתו.</li>
+        <li>אשרו את ההרשאות המבוקשות.</li>
+        <li>לאחר החיבור תופיע <strong>Service ID</strong> — לדוגמה: <code>service_abc1234</code>. שמרו אותו בצד.</li>
+      </ol>
+
+      <h3 style="margin-top:18px;">שלב 3: יצירת תבנית מייל (Email Template)</h3>
+      <ol>
+        <li>בלוח הבקרה, פתחו את <strong>Email Templates</strong>.</li>
+        <li>לחצו <strong>Create New Template</strong>.</li>
+        <li>הגדירו את שלושת השדות הבאים <strong>בדיוק</strong> כך:
+          <ul>
+            <li><strong>To Email</strong>: <code>{{to_email}}</code></li>
+            <li><strong>Subject</strong>: <code>{{subject}}</code></li>
+            <li><strong>Content</strong> (תוכן ההודעה): <code>{{message}}</code></li>
+          </ul>
+        </li>
+        <li>אפשר לעצב את גוף המייל כרצונכם (לוגו, כותרת, חתימה) — רק חשוב שהתוכן הדינמי יופיע במשתנה <code>{{message}}</code>.</li>
+        <li>שמרו את התבנית. תופיע <strong>Template ID</strong> — לדוגמה: <code>template_xyz789</code>. שמרו אותו בצד.</li>
+      </ol>
+
+      <h3 style="margin-top:18px;">שלב 4: איתור המפתח הציבורי (Public Key)</h3>
+      <ol>
+        <li>בלוח הבקרה, פתחו <strong>Account</strong> ← <strong>General</strong>.</li>
+        <li>אתרו את <strong>Public Key</strong> — לדוגמה: <code>AbCdEfGhIjKlMnOpQ</code>. שמרו אותו בצד.</li>
+      </ol>
+
+      <h3 style="margin-top:18px;">שלב 5: הזנת הפרטים במערכת ניהול ההנצחות</h3>
+      <p>בעמוד הגדרות זה, בקלף "📧 הגדרות EmailJS" מלאו:</p>
+      <ul>
+        <li><strong>Service ID</strong> — מה שקיבלתם בשלב 2</li>
+        <li><strong>Template ID</strong> — מה שקיבלתם בשלב 3</li>
+        <li><strong>Public Key</strong> — מה שקיבלתם בשלב 4</li>
+        <li><strong>תבנית תזכורת (ימים)</strong> — כמה ימים לאחר מכירה לפני שליחת תזכורת (מומלץ: 14)</li>
+        <li><strong>נוסח המייל</strong> — טקסט חופשי, אפשר להשתמש במשתנים: <code>{{comm_name}}</code> (שם ההנצחה), <code>{{project_name}}</code> (שם הפרויקט), <code>{{donor_name}}</code> (שם התורם), <code>{{sale_date}}</code> (תאריך המכירה)</li>
+      </ul>
+      <p>לחצו "שמור הגדרות מייל".</p>
+
+      <h3 style="margin-top:18px;">שלב 6: הגדרת כתובות מייל לפי מקור תרומה</h3>
+      <p>בקלף "✉️ מיילים לפי מקור תרומה" — לכל מקור תרומה הזינו את כתובת המייל של האחראי שיקבל את התזכורות עבור אותו מקור, ולחצו "שמור מיילים".</p>
+
+      <h3 style="margin-top:18px;">איך זה עובד בשטח</h3>
+      <p>כאשר אדמין מתחבר למערכת, היא בודקת אוטומטית אם יש הנצחות שנמכרו ועדיין "ממתינות לנוסח" מעבר למספר הימים שהוגדר, ומציגה התראה. בעמוד "דוח מקורות תרומה" יש כפתור "✉️ שלח תזכורות נוסח" — לחיצה עליו שולחת מייל לכל אחראי מקור שיש לו הנצחה ממתינה.</p>
+
+      <h3 style="margin-top:18px;">בדיקה שהכל עובד</h3>
+      <ol>
+        <li>ודאו שיש לפחות הנצחה אחת "שנמכרה" עם "נוסח ממתין" ועם מקור תרומה שהוגדרה לו כתובת מייל.</li>
+        <li>גשו ל"דוח מקורות תרומה" ולחצו "✉️ שלח תזכורות נוסח".</li>
+        <li>בדקו שהתיבה מקבלת מייל.</li>
+      </ol>
+
+      <h3 style="margin-top:18px;">הערה</h3>
+      <p>המדריך הזה מתייחס רק לתזכורות נוסח הנשלחות לאחראי מקור. שליחת מייל אישי לתורם (כפתור "📧 שלח מייל לתורם" בכרטיס ההנצחה) פועלת כרגע באמצעות פתיחת תוכנת המייל הרגילה במחשב — לא דרך EmailJS.</p>
+
+      <h3 style="margin-top:18px;">בעיות נפוצות</h3>
+      <ul>
+        <li><strong>"נא להגדיר EmailJS בהגדרות המערכת"</strong> — סימן שאחד השדות (Service ID / Template ID / Public Key) ריק. ודאו שכולם הוזנו ונשמרו.</li>
+        <li><strong>המייל לא מתקבל</strong> — בדקו תיקיית ספאם, וודאו שה-Service ב-EmailJS עדיין מחובר (לעיתים Gmail מבקש אישור מחדש כל כמה חודשים).</li>
+        <li><strong>חרגתם מהמכסה החינמית (200 מיילים בחודש)</strong> — אפשר לשדרג לתוכנית בתשלום בחשבון ה-EmailJS.</li>
+      </ul>
+    </div>
+    <div class="modal-actions">
+      <button class="btn btn-ghost" onclick="closeModal('modal-emailjs-help')">סגור</button>
+    </div>
+  </div>
+</div>
+
 <!-- PROJECT DRAWER -->
 <div class="drawer-backdrop" id="drawer-backdrop" onclick="closeProjectDrawer()"></div>
 <div class="project-drawer" id="project-drawer">
@@ -2028,7 +2114,10 @@ function openCommDetail(commId) {
       <div style="font-size:13px;font-weight:700;color:var(--primary-dark);margin-bottom:8px;">🖼️ תמונת הנצחה</div>`;
     if (c.imageUrl) {
       html += `<img src="${esc(c.imageUrl)}" class="image-preview" alt="תמונת הנצחה">
-        ${isAdmin ? `<button class="btn btn-ghost btn-sm" style="margin-top:8px;" onclick="sendDonorEmail('${commId}')">📧 שלח מייל לתורם</button>` : ''}`;
+        ${isAdmin ? `<div style="display:flex;gap:8px;margin-top:8px;">
+          <button class="btn btn-ghost btn-sm" onclick="sendDonorEmail('${commId}')">📧 שלח מייל לתורם</button>
+          <button class="btn btn-danger btn-sm" onclick="deleteCommImage('${commId}')">🗑️ מחק תמונה</button>
+        </div>` : ''}`;
     } else {
       html += `<div style="color:var(--text-muted);font-size:13px;margin-bottom:8px;">אין תמונה עדיין</div>`;
     }
@@ -2184,6 +2273,20 @@ async function uploadCommImage(commId, input) {
     openCommDetail(commId);
   } catch(e) {
     showToast('שגיאה בשמירת תמונה: ' + e.message, 'error');
+  }
+}
+
+async function deleteCommImage(commId) {
+  if (!confirm('למחוק את תמונת ההנצחה?')) return;
+  try {
+    if (IS_CONFIGURED) {
+      await db.ref(`commemorations/${commId}`).update({ imageUrl: null });
+    }
+    if (allComms[commId]) allComms[commId].imageUrl = null;
+    showToast('התמונה נמחקה', 'success');
+    openCommDetail(commId);
+  } catch(e) {
+    showToast('שגיאה במחיקת תמונה: ' + e.message, 'error');
   }
 }
 
@@ -3896,7 +3999,9 @@ function renderAdminSettingsPage() {
       <button class="btn btn-primary" style="margin-top:12px;" onclick="saveSourceEmails()">שמור מיילים</button>
     </div>
     <div class="card">
-      <div class="card-title">📧 הגדרות EmailJS</div>
+      <div class="card-title">📧 הגדרות EmailJS
+        <button class="btn btn-ghost btn-sm" style="border-radius:50%;width:24px;height:24px;padding:0;line-height:1;font-weight:700;" onclick="openModal('modal-emailjs-help')" title="מדריך הגדרה">?</button>
+      </div>
       <p style="color:var(--text-muted);font-size:13px;margin-bottom:12px;">
         לשליחת מיילים אוטומטיים — <a href="https://www.emailjs.com" target="_blank">צור חשבון EmailJS</a>, הגדר Service + Template, והזן את הפרטים כאן.
       </p>
