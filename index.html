@@ -2376,10 +2376,15 @@ async function renderSaleHistoryPage() {
   }
   content.innerHTML = '<div class="empty-state"><div class="empty-icon">⏳</div><h3>טוען...</h3></div>';
   await loadProjects();
-  const snap = await db.ref('saleLog').orderByChild('soldAt').once('value');
+  const [saleLogSnap, commsSnap] = await Promise.all([
+    db.ref('saleLog').orderByChild('soldAt').once('value'),
+    db.ref('commemorations').once('value')
+  ]);
   const logs = [];
-  if (snap.exists()) snap.forEach(function(c) { logs.push(Object.assign({ key: c.key }, c.val())); });
+  if (saleLogSnap.exists()) saleLogSnap.forEach(function(c) { logs.push(Object.assign({ key: c.key }, c.val())); });
   logs.reverse();
+  const comms = {};
+  if (commsSnap.exists()) commsSnap.forEach(function(c) { comms[c.key] = c.val(); });
   const rows = logs.map(function(l) {
     const projName = (allProjects[l.projectId] && allProjects[l.projectId].name) || '';
     const isRelease = l.logType === 'release';
@@ -2390,7 +2395,11 @@ async function renderSaleHistoryPage() {
         : '<span style="background:#E8F5E9;color:#2E7D32;border-radius:6px;padding:1px 7px;font-size:11px;font-weight:700;">✋→💰</span>';
     const rowStyle = isRelease ? ' style="background:#FFF5F5;opacity:0.85;"' : '';
     const priceDisplay = isRelease ? '<span style="color:#C62828;">—</span>' : '₪' + ((l.price||0).toLocaleString());
-    const fundraiserDisplay = [l.donationSource, l.secondaryFundraiser].filter(Boolean).join(' - ') || '-';
+    const comm = comms[l.commId] || {};
+    const fundraiserDisplay = [
+      l.donationSource || comm.donationSource,
+      l.secondaryFundraiser || comm.secondaryFundraiser
+    ].filter(Boolean).join(' - ') || '-';
     return '<tr' + rowStyle + '><td><strong>' + esc(l.commName||'') + '</strong></td><td>' +
       esc(projName) + '</td><td>' + esc(l.donorName||'') + '</td><td>' + esc(l.donorPhone||'') + '</td><td>' +
       esc(fundraiserDisplay) + '</td><td style="font-weight:700;color:var(--accent);">' + priceDisplay + '</td><td>' +
