@@ -2034,6 +2034,7 @@ async function confirmSell() {
     await db.ref('saleLog').push({
       commId, commName: current.name || '', projectId: current.projectId || currentProjectId || '',
       donorName, donorPhone, fundraiserName: current.captureFundraiserName || null,
+      donationSource: source || null, secondaryFundraiser: secondaryFundraiser || null,
       soldBy: currentUser.uid, soldByName: currentUser.displayName,
       soldAt, price: current.price || 0, directSell: isDirectSell
     });
@@ -2231,6 +2232,7 @@ async function adminResetComm(commId) {
     await db.ref('saleLog').push({
       commId, commName: c.name || '', projectId: c.projectId || currentProjectId || '',
       donorName: c.donorName || '', donorPhone: c.donorPhone || '',
+      donationSource: c.donationSource || null, secondaryFundraiser: c.secondaryFundraiser || null,
       soldBy: currentUser.uid, soldByName: currentUser.displayName,
       soldAt: Date.now(), price: c.price || 0, directSell: false,
       logType: 'release', releasedBy: currentUser.uid, releasedByName: currentUser.displayName, releasedAt: Date.now()
@@ -2388,9 +2390,10 @@ async function renderSaleHistoryPage() {
         : '<span style="background:#E8F5E9;color:#2E7D32;border-radius:6px;padding:1px 7px;font-size:11px;font-weight:700;">✋→💰</span>';
     const rowStyle = isRelease ? ' style="background:#FFF5F5;opacity:0.85;"' : '';
     const priceDisplay = isRelease ? '<span style="color:#C62828;">—</span>' : '₪' + ((l.price||0).toLocaleString());
+    const fundraiserDisplay = [l.donationSource, l.secondaryFundraiser].filter(Boolean).join(' - ') || '-';
     return '<tr' + rowStyle + '><td><strong>' + esc(l.commName||'') + '</strong></td><td>' +
       esc(projName) + '</td><td>' + esc(l.donorName||'') + '</td><td>' + esc(l.donorPhone||'') + '</td><td>' +
-      esc(l.fundraiserName||'-') + '</td><td style="font-weight:700;color:var(--accent);">' + priceDisplay + '</td><td>' +
+      esc(fundraiserDisplay) + '</td><td style="font-weight:700;color:var(--accent);">' + priceDisplay + '</td><td>' +
       esc(l.soldByName||'') + '</td><td>' + (l.soldAt ? formatDate(l.soldAt) : '-') + '</td><td>' + typeBadge + '</td></tr>';
   }).join('');
   const totalAmount = logs.reduce((s,l) => s + (l.price||0), 0);
