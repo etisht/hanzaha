@@ -1858,6 +1858,10 @@ async function confirmCapture() {
   try {
     let success = false;
     const capturedAt = Date.now();
+    // Pre-fetch to ensure Firebase SDK has this node cached before the transaction.
+    // Without this, on pages that used once('value') on the parent (e.g. search),
+    // the transaction callback receives null on the first call and aborts incorrectly.
+    await db.ref(`commemorations/${commId}`).once('value');
     await db.ref(`commemorations/${commId}`).transaction(current => {
       if (!current || current.status !== 'available') return;
       success = true;
@@ -2352,16 +2356,48 @@ async function renderCaptureHistoryPage() {
   logs.reverse();
   const releaseLabels = { manual: 'שוחרר ידנית', expired: 'פג תוקף', sold: 'נמכר' };
   const releaseClasses = { manual: 'release-manual', expired: 'release-expired', sold: 'release-sold' };
+  const now = Date.now();
   const rows = logs.map(function(l) {
-    const relBadge = l.releaseReason ? '<span class="release-badge ' + (releaseClasses[l.releaseReason]||'') + '">' + (releaseLabels[l.releaseReason]||l.releaseReason) + '</span>' : '-';
-    return '<tr><td><strong>' + esc(l.commName||'') + '</strong></td><td>' +
+    const isExpired = !l.releasedAt && l.captureExpiry && l.captureExpiry < now;
+    const isActive  = !l.releasedAt && !isExpired;
+    const relBadge = l.releaseReason
+      ? '<span class="release-badge ' + (releaseClasses[l.releaseReason]||'') + '">' + (releaseLabels[l.releaseReason]||l.releaseReason) + '</span>'
+      : isExpired ? '<span class="release-badge release-expired">פג תוקף</span>'
+      : '-';
+    const releasedAtCell = l.releasedAt ? formatDate(l.releasedAt)
+      : isExpired ? '<span style="color:var(--danger);font-size:12px;">לא שוחרר</span>'
+      : '<span class="release-badge release-pending">פעיל</span>';
+    const rowStyle = isActive ? ' style="cursor:pointer;" onclick="releaseFromCaptureHistory(\'' + esc(l.key) + '\',\'' + esc(l.commId||'') + '\')"' : '';
+    const rowTitle = isActive ? ' title="לחץ לשחרור תפיסה"' : '';
+    return '<tr' + rowStyle + rowTitle + '><td><strong>' + esc(l.commName||'') + '</strong></td><td>' +
       esc(allProjects[l.projectId]&&allProjects[l.projectId].name||'') + '</td><td>' + esc(l.capturedByName||'') + '</td><td>' +
       (l.capturedAt ? formatDate(l.capturedAt) : '-') + '</td><td>' + (l.captureExpiry ? formatDate(l.captureExpiry) : '-') + '</td><td>' +
-      (l.releasedAt ? formatDate(l.releasedAt) : '<span class="release-badge release-pending">פעיל</span>') + '</td><td>' + relBadge + '</td></tr>';
+      releasedAtCell + '</td><td>' + relBadge + '</td></tr>';
   }).join('');
   content.innerHTML = '<div style="margin-bottom:12px;font-size:14px;color:var(--text-muted);">סה"כ: ' + logs.length + ' תפיסות</div>' +
     '<div class="table-wrap"><table class="data-table history-table"><thead><tr><th>הנצחה</th><th>פרויקט</th><th>נתפס ע"י</th><th>תאריך תפיסה</th><th>שחרור מתוכנן</th><th>שוחרר בפועל</th><th>סיבה</th></tr></thead><tbody>' +
     (rows || '<tr><td colspan="7" style="text-align:center;padding:40px;">אין נתונים</td></tr>') + '</tbody></table></div>';
+}
+
+async function releaseFromCaptureHistory(logKey, commId) {
+  if (!commId || !confirm('לשחרר תפיסה זו? ההנצחה תחזור לזמינה.')) return;
+  try {
+    const snap = await db.ref(`commemorations/${commId}`).once('value');
+    const c = snap.val();
+    if (!c || c.status !== 'captured') {
+      showToast('ההנצחה כבר לא במצב תפוס', 'error');
+      renderCaptureHistoryPage();
+      return;
+    }
+    const releasedAt = Date.now();
+    const resetData = { status: 'available', capturedBy: null, capturedByName: null, capturedAt: null, captureExpiry: null, captureExpiredAt: null, capturedDonorName: null, captureFundraiserName: null, captureNote: null };
+    await db.ref(`commemorations/${commId}`).update(resetData);
+    await db.ref(`captureLog/${logKey}`).update({ releasedAt, releaseReason: 'manual' });
+    showToast('התפיסה שוחררה ✅', 'success');
+    renderCaptureHistoryPage();
+  } catch(e) {
+    showToast('שגיאה: ' + e.message, 'error');
+  }
 }
 
 // ============================================================
