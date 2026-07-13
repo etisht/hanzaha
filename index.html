@@ -2406,7 +2406,7 @@ async function openCaptureHistoryDetail(logKey, commId) {
         <span id="capture-expiry-display">${c.captureExpiry ? formatDate(c.captureExpiry) : '-'}</span>
         ${isStillCaptured ? `<input type="date" id="capture-expiry-edit" style="display:none;font-size:13px;padding:3px 6px;border:1px solid var(--border);border-radius:6px;" value="${c.captureExpiry ? new Date(c.captureExpiry).toISOString().slice(0,10) : ''}">
         <button class="btn btn-ghost btn-sm" id="capture-expiry-edit-btn" onclick="toggleCaptureExpiryEdit()" style="font-size:12px;padding:3px 8px;">✏️ ערוך</button>
-        <button class="btn btn-primary btn-sm" id="capture-expiry-save-btn" onclick="saveCaptureExpiry('${commId}')" style="display:none;font-size:12px;padding:3px 8px;">שמור</button>` : ''}
+        <button class="btn btn-primary btn-sm" id="capture-expiry-save-btn" onclick="saveCaptureExpiry('${commId}','${logKey}')" style="display:none;font-size:12px;padding:3px 8px;">שמור</button>` : ''}
       </span>
     </div>`;
 
@@ -2432,13 +2432,14 @@ function toggleCaptureExpiryEdit() {
   saveBtn.style.display = editing ? 'inline-block' : 'none';
 }
 
-async function saveCaptureExpiry(commId) {
+async function saveCaptureExpiry(commId, logKey) {
   const input = document.getElementById('capture-expiry-edit');
   if (!input || !input.value) { showToast('יש לבחור תאריך', 'error'); return; }
   const newExpiry = new Date(input.value + 'T23:59:59').getTime();
   if (newExpiry <= Date.now()) { showToast('התאריך חייב להיות בעתיד', 'error'); return; }
   try {
     await db.ref(`commemorations/${commId}`).update({ captureExpiry: newExpiry, captureExpiredAt: null });
+    if (logKey) await db.ref(`captureLog/${logKey}`).update({ captureExpiry: newExpiry });
     showToast('הפקיעה עודכנה ✅', 'success');
     // update display inline without reopening modal
     document.getElementById('capture-expiry-display').textContent = formatDate(newExpiry);
