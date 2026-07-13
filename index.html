@@ -2386,6 +2386,7 @@ async function openCaptureHistoryDetail(logKey, commId) {
 
   const projName = (allProjects[c.projectId] && allProjects[c.projectId].name) || '';
   const type = allTypes[c.typeId]?.name || '';
+  const isStillCaptured = c.status === 'captured';
 
   let html = `
     <div class="info-row"><span class="info-label">פרויקט:</span><span>${esc(projName)}</span></div>
@@ -2399,9 +2400,15 @@ async function openCaptureHistoryDetail(logKey, commId) {
     ${c.captureSecondaryFundraiser ? `<div class="info-row"><span class="info-label">מתרים משני:</span><span>${esc(c.captureSecondaryFundraiser)}</span></div>` : ''}
     ${c.captureNote ? `<div class="info-row"><span class="info-label">הערה:</span><span>${esc(c.captureNote)}</span></div>` : ''}
     <div class="info-row"><span class="info-label">תאריך תפיסה:</span><span>${c.capturedAt ? formatDate(c.capturedAt) : '-'}</span></div>
-    <div class="info-row"><span class="info-label">פקיעה מתוכננת:</span><span>${c.captureExpiry ? formatDate(c.captureExpiry) : '-'}</span></div>`;
-
-  const isStillCaptured = c.status === 'captured';
+    <div class="info-row">
+      <span class="info-label">פקיעה מתוכננת:</span>
+      <span style="display:flex;align-items:center;gap:8px;">
+        <span id="capture-expiry-display">${c.captureExpiry ? formatDate(c.captureExpiry) : '-'}</span>
+        ${isStillCaptured ? `<input type="date" id="capture-expiry-edit" style="display:none;font-size:13px;padding:3px 6px;border:1px solid var(--border);border-radius:6px;" value="${c.captureExpiry ? new Date(c.captureExpiry).toISOString().slice(0,10) : ''}">
+        <button class="btn btn-ghost btn-sm" id="capture-expiry-edit-btn" onclick="toggleCaptureExpiryEdit()" style="font-size:12px;padding:3px 8px;">✏️ ערוך</button>
+        <button class="btn btn-primary btn-sm" id="capture-expiry-save-btn" onclick="saveCaptureExpiry('${commId}')" style="display:none;font-size:12px;padding:3px 8px;">שמור</button>` : ''}
+      </span>
+    </div>`;
 
   document.getElementById('detail-title').textContent = c.name || 'פרטי תפיסה';
   document.getElementById('detail-content').innerHTML = html;
@@ -2411,6 +2418,37 @@ async function openCaptureHistoryDetail(logKey, commId) {
       : '') +
     `<button class="btn btn-ghost" onclick="closeModal('modal-comm-detail')">סגור</button>`;
   openModal('modal-comm-detail');
+}
+
+function toggleCaptureExpiryEdit() {
+  const input = document.getElementById('capture-expiry-edit');
+  const editBtn = document.getElementById('capture-expiry-edit-btn');
+  const saveBtn = document.getElementById('capture-expiry-save-btn');
+  const display = document.getElementById('capture-expiry-display');
+  const editing = input.style.display === 'none';
+  input.style.display = editing ? 'inline-block' : 'none';
+  display.style.display = editing ? 'none' : 'inline';
+  editBtn.textContent = editing ? '✕ ביטול' : '✏️ ערוך';
+  saveBtn.style.display = editing ? 'inline-block' : 'none';
+}
+
+async function saveCaptureExpiry(commId) {
+  const input = document.getElementById('capture-expiry-edit');
+  if (!input || !input.value) { showToast('יש לבחור תאריך', 'error'); return; }
+  const newExpiry = new Date(input.value + 'T23:59:59').getTime();
+  if (newExpiry <= Date.now()) { showToast('התאריך חייב להיות בעתיד', 'error'); return; }
+  try {
+    await db.ref(`commemorations/${commId}`).update({ captureExpiry: newExpiry, captureExpiredAt: null });
+    showToast('הפקיעה עודכנה ✅', 'success');
+    // update display inline without reopening modal
+    document.getElementById('capture-expiry-display').textContent = formatDate(newExpiry);
+    document.getElementById('capture-expiry-display').style.display = 'inline';
+    document.getElementById('capture-expiry-edit').style.display = 'none';
+    document.getElementById('capture-expiry-edit-btn').textContent = '✏️ ערוך';
+    document.getElementById('capture-expiry-save-btn').style.display = 'none';
+  } catch(e) {
+    showToast('שגיאה: ' + e.message, 'error');
+  }
 }
 
 async function releaseFromCaptureHistory(logKey, commId) {
