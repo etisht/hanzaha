@@ -1858,12 +1858,12 @@ async function confirmCapture() {
   try {
     let success = false;
     const capturedAt = Date.now();
-    // Pre-fetch to ensure Firebase SDK has this node cached before the transaction.
-    // Without this, on pages that used once('value') on the parent (e.g. search),
-    // the transaction callback receives null on the first call and aborts incorrectly.
-    await db.ref(`commemorations/${commId}`).once('value');
     await db.ref(`commemorations/${commId}`).transaction(current => {
-      if (!current || current.status !== 'available') return;
+      // current===null means Firebase has no local cache (no active listener on this node).
+      // Returning null (not undefined) tells Firebase to conflict-check with the server,
+      // which triggers a retry with the real server value.
+      if (current === null) return current;
+      if (current.status !== 'available') return;
       success = true;
       return { ...current, status: 'captured', capturedBy: currentUser.uid, capturedByName: currentUser.displayName, capturedAt, captureExpiry, capturedDonorName, captureSource, captureOperatorName, captureNote, captureExpiredAt: null };
     });
