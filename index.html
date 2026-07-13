@@ -2367,8 +2367,8 @@ async function renderCaptureHistoryPage() {
     const releasedAtCell = l.releasedAt ? formatDate(l.releasedAt)
       : isExpired ? '<span style="color:var(--danger);font-size:12px;">לא שוחרר</span>'
       : '<span class="release-badge release-pending">פעיל</span>';
-    const rowStyle = isActive ? ' style="cursor:pointer;" onclick="releaseFromCaptureHistory(\'' + esc(l.key) + '\',\'' + esc(l.commId||'') + '\')"' : '';
-    const rowTitle = isActive ? ' title="לחץ לשחרור תפיסה"' : '';
+    const rowStyle = isActive ? ' style="cursor:pointer;" onclick="openCaptureHistoryDetail(\'' + esc(l.key) + '\',\'' + esc(l.commId||'') + '\')"' : '';
+    const rowTitle = isActive ? ' title="לחץ לפרטי התפיסה"' : '';
     return '<tr' + rowStyle + rowTitle + '><td><strong>' + esc(l.commName||'') + '</strong></td><td>' +
       esc(allProjects[l.projectId]&&allProjects[l.projectId].name||'') + '</td><td>' + esc(l.capturedByName||'') + '</td><td>' +
       (l.capturedAt ? formatDate(l.capturedAt) : '-') + '</td><td>' + (l.captureExpiry ? formatDate(l.captureExpiry) : '-') + '</td><td>' +
@@ -2379,6 +2379,40 @@ async function renderCaptureHistoryPage() {
     (rows || '<tr><td colspan="7" style="text-align:center;padding:40px;">אין נתונים</td></tr>') + '</tbody></table></div>';
 }
 
+async function openCaptureHistoryDetail(logKey, commId) {
+  if (!commId) return;
+  const snap = await db.ref(`commemorations/${commId}`).once('value');
+  const c = snap.val() || {};
+
+  const projName = (allProjects[c.projectId] && allProjects[c.projectId].name) || '';
+  const type = allTypes[c.typeId]?.name || '';
+
+  let html = `
+    <div class="info-row"><span class="info-label">פרויקט:</span><span>${esc(projName)}</span></div>
+    <div class="info-row"><span class="info-label">סוג:</span><span>${esc(type)}</span></div>
+    <div class="info-row"><span class="info-label">מחיר:</span><span style="font-weight:700;color:var(--accent)">₪${(c.price||0).toLocaleString()}</span></div>
+    <hr class="divider">
+    <div class="info-row"><span class="info-label">תפוס ע"י:</span><span>${esc(c.capturedByName||'')}</span></div>
+    <div class="info-row"><span class="info-label">שם תורם:</span><span>${esc(c.capturedDonorName||'-')}</span></div>
+    <div class="info-row"><span class="info-label">שם טלפנית:</span><span>${esc(c.captureOperatorName||'-')}</span></div>
+    <div class="info-row"><span class="info-label">מקור:</span><span>${esc(c.captureSource||'-')}</span></div>
+    ${c.captureSecondaryFundraiser ? `<div class="info-row"><span class="info-label">מתרים משני:</span><span>${esc(c.captureSecondaryFundraiser)}</span></div>` : ''}
+    ${c.captureNote ? `<div class="info-row"><span class="info-label">הערה:</span><span>${esc(c.captureNote)}</span></div>` : ''}
+    <div class="info-row"><span class="info-label">תאריך תפיסה:</span><span>${c.capturedAt ? formatDate(c.capturedAt) : '-'}</span></div>
+    <div class="info-row"><span class="info-label">פקיעה מתוכננת:</span><span>${c.captureExpiry ? formatDate(c.captureExpiry) : '-'}</span></div>`;
+
+  const isStillCaptured = c.status === 'captured';
+
+  document.getElementById('detail-title').textContent = c.name || 'פרטי תפיסה';
+  document.getElementById('detail-content').innerHTML = html;
+  document.getElementById('detail-actions').innerHTML =
+    (isStillCaptured
+      ? `<button class="btn btn-danger btn-sm" onclick="releaseFromCaptureHistory('${logKey}','${commId}')">↩ שחרר תפיסה</button>`
+      : '') +
+    `<button class="btn btn-ghost" onclick="closeModal('modal-comm-detail')">סגור</button>`;
+  openModal('modal-comm-detail');
+}
+
 async function releaseFromCaptureHistory(logKey, commId) {
   if (!commId || !confirm('לשחרר תפיסה זו? ההנצחה תחזור לזמינה.')) return;
   try {
@@ -2386,6 +2420,7 @@ async function releaseFromCaptureHistory(logKey, commId) {
     const c = snap.val();
     if (!c || c.status !== 'captured') {
       showToast('ההנצחה כבר לא במצב תפוס', 'error');
+      closeModal('modal-comm-detail');
       renderCaptureHistoryPage();
       return;
     }
@@ -2394,6 +2429,7 @@ async function releaseFromCaptureHistory(logKey, commId) {
     await db.ref(`commemorations/${commId}`).update(resetData);
     await db.ref(`captureLog/${logKey}`).update({ releasedAt, releaseReason: 'manual' });
     showToast('התפיסה שוחררה ✅', 'success');
+    closeModal('modal-comm-detail');
     renderCaptureHistoryPage();
   } catch(e) {
     showToast('שגיאה: ' + e.message, 'error');
