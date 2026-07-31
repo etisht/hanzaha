@@ -1665,6 +1665,7 @@ async function renderProjectDetailPage() {
     ${descriptionHtml}
     <div class="filters-bar">
       <span class="filter-label">סינון:</span>
+      <input class="filter-select" id="filter-comm-name" placeholder="חיפוש לפי שם ההנצחה (חלקי)..." style="min-width:200px;" oninput="filterComms()">
       <select class="filter-select" id="filter-type" onchange="filterComms()">
         <option value="">כל הסוגים</option>
         ${Object.entries(allTypes).map(([id,t]) => `<option value="${id}">${esc(t.name)}</option>`).join('')}
@@ -1717,9 +1718,11 @@ function renderCommsStats() {
 function filterComms() { renderCommsGrid(); }
 
 function renderCommsGrid() {
+  const nameFilter = (document.getElementById('filter-comm-name')?.value || '').trim().toLowerCase();
   const typeFilter = document.getElementById('filter-type')?.value || '';
   const statusFilter = document.getElementById('filter-status')?.value || '';
   let items = Object.entries(allComms);
+  if (nameFilter) items = items.filter(([,c]) => (c.name||'').toLowerCase().includes(nameFilter));
   if (typeFilter) items = items.filter(([,c]) => c.typeId === typeFilter);
   if (statusFilter) items = items.filter(([,c]) => c.status === statusFilter);
 
@@ -2226,12 +2229,16 @@ async function adminResetComm(commId) {
   if (!confirm('לאפס הנצחה זו חזרה למצב פנוי?')) return;
   const c = allComms[commId] || {};
   const wasSold = c.status === 'sold';
+  const wasCaptured = c.status === 'captured';
   const resetData = { status: 'available', capturedBy: null, capturedByName: null, capturedAt: null, captureExpiry: null, captureExpiredAt: null, capturedDonorName: null, captureFundraiserName: null, captureSecondaryFundraiser: null, captureNote: null, donorName: null, donorPhone: null, donorEmail: null, donorNumber: null, fundraiserName: null, fundraiserSubCategory: null, donationNumber: null, donationSource: null, secondaryFundraiser: null, paymentMethod: null, saleNotes: null, soldBy: null, soldByName: null, soldAt: null };
   if (!IS_CONFIGURED) {
     allComms[commId] = { ...c, ...resetData };
     closeModal('modal-comm-detail'); renderCommsGrid(); renderCommsStats(); return;
   }
   await db.ref(`commemorations/${commId}`).update(resetData);
+  if (wasCaptured) {
+    await updateCaptureLogRelease(commId, Date.now(), 'manual');
+  }
   if (wasSold) {
     await db.ref('saleLog').push({
       commId, commName: c.name || '', projectId: c.projectId || currentProjectId || '',
@@ -4361,6 +4368,13 @@ function renderSearchPage() {
           oninput="debounceSearch()">
       </div>
       <div>
+        <div class="filter-label" style="margin-bottom:6px;">שם ההנצחה</div>
+        <input class="form-control" id="search-comm-name"
+          placeholder="הקלד חלק משם ההנצחה..."
+          style="min-width:200px;"
+          oninput="debounceSearch()">
+      </div>
+      <div>
         <div class="filter-label" style="margin-bottom:6px;">סטאטוס פרויקט</div>
         <select class="filter-select" id="search-project-status" onchange="runSearch()">
           <option value="">כל הסטאטוסים</option>
@@ -4407,6 +4421,7 @@ function debounceSearch() {
 
 async function runSearch() {
   const projectNameQuery = (document.getElementById('search-project-name')?.value || '').trim().toLowerCase();
+  const commNameQuery = (document.getElementById('search-comm-name')?.value || '').trim().toLowerCase();
   const projectStatusFilter = document.getElementById('search-project-status')?.value || '';
   const typeTextQuery = (document.getElementById('search-type-text')?.value || '').trim().toLowerCase();
   const matchingTypeIds = typeTextQuery
@@ -4466,12 +4481,14 @@ async function runSearch() {
   let filtered = commsEntries.filter(([,c]) => {
     if (!matchingProjectIds.has(c.projectId)) return false;
     if (matchingTypeIds && !matchingTypeIds.has(c.typeId)) return false;
+    if (commNameQuery && !(c.name||'').toLowerCase().includes(commNameQuery)) return false;
     if (c.status !== 'available') return false; // רק פנויות
     return true;
   });
 
   if (!filtered.length) {
-    resultsEl.innerHTML = `<div class="empty-state"><div class="empty-icon">🔍</div><h3>לא נמצאו הנצחות פנויות</h3><p>כל ההנצחות תפוסות או נמכרו</p></div>`;
+    const msg = commNameQuery ? 'לא נמצאו הנצחות פנויות בשם זה' : 'לא נמצאו הנצחות פנויות';
+    resultsEl.innerHTML = `<div class="empty-state"><div class="empty-icon">🔍</div><h3>${msg}</h3><p>נסה שם אחר או בדוק אם ההנצחה כבר תפוסה/נמכרה</p></div>`;
     return;
   }
 
@@ -4690,15 +4707,16 @@ async function renderAdminExpiredPage() {
     const project = allProjects[c.projectId];
     const daysPassed = Math.floor((Date.now() - c.capturedAt) / 86400000);
     const expiredDays = Math.floor((Date.now() - c.captureExpiredAt) / 86400000);
-    return `<tr>
+    return `<tr style="cursor:pointer;" onclick="openExpiredCommDetail('${c.id}')" title="לחץ לפרטי התפיסה">
       <td><strong>${esc(c.name)}</strong></td>
       <td>${esc(project?.name||'?')}</td>
       <td>${esc(c.capturedByName||'')}</td>
       <td>${esc(c.capturedDonorName||'-')}</td>
       <td>${esc(c.captureFundraiserName||'-')}</td>
+      <td>${c.captureNote ? '📝 <span title="'+esc(c.captureNote)+'">יש הערה</span>' : '-'}</td>
       <td style="color:var(--danger);font-weight:600;">${daysPassed} ימים</td>
       <td style="color:var(--warning);font-weight:600;">${expiredDays} ימים</td>
-      <td>
+      <td onclick="event.stopPropagation();">
         <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;">
           <button class="btn btn-danger btn-sm" onclick="handleExpiredCapture('${c.id}','release')">🔓 שחרר</button>
           <input type="number" id="ext-days-${c.id}" min="1" max="90" value="${appSettings.captureExpiryDays}"
@@ -4715,10 +4733,47 @@ async function renderAdminExpiredPage() {
     </div>
     <div class="table-wrap">
       <table class="data-table">
-        <thead><tr><th>הנצחה</th><th>פרויקט</th><th>תפוס ע"י</th><th>שם תורם</th><th>שם מתרים</th><th>ימים בתפיסה</th><th>ימים מאז פקיעה</th><th>פעולה</th></tr></thead>
+        <thead><tr><th>הנצחה</th><th>פרויקט</th><th>תפוס ע"י</th><th>שם תורם</th><th>שם מתרים</th><th>הערה</th><th>ימים בתפיסה</th><th>ימים מאז פקיעה</th><th>פעולה</th></tr></thead>
         <tbody>${rows}</tbody>
       </table>
     </div>`;
+}
+
+async function openExpiredCommDetail(commId) {
+  const snap = await db.ref(`commemorations/${commId}`).once('value');
+  const c = snap.val();
+  if (!c) return;
+
+  const project = allProjects[c.projectId];
+  const type = allTypes[c.typeId]?.name || '';
+  const daysPassed = c.capturedAt ? Math.floor((Date.now() - c.capturedAt) / 86400000) : 0;
+  const expiredDays = c.captureExpiredAt ? Math.floor((Date.now() - c.captureExpiredAt) / 86400000) : 0;
+
+  const html = `
+    <div class="info-row"><span class="info-label">פרויקט:</span><span>${esc(project?.name||'')}</span></div>
+    <div class="info-row"><span class="info-label">סוג:</span><span>${esc(type)}</span></div>
+    <div class="info-row"><span class="info-label">מחיר:</span><span style="font-weight:700;color:var(--accent)">₪${(c.price||0).toLocaleString()}</span></div>
+    <hr class="divider">
+    <div class="info-row"><span class="info-label">תפוס ע"י:</span><span>${esc(c.capturedByName||'')}</span></div>
+    <div class="info-row"><span class="info-label">שם תורם:</span><span>${esc(c.capturedDonorName||'-')}</span></div>
+    <div class="info-row"><span class="info-label">שם טלפנית:</span><span>${esc(c.captureOperatorName||'-')}</span></div>
+    <div class="info-row"><span class="info-label">מקור:</span><span>${esc(c.captureSource||'-')}</span></div>
+    ${c.captureNote ? `<div class="info-row"><span class="info-label">הערה:</span><span>${esc(c.captureNote)}</span></div>` : ''}
+    <div class="info-row"><span class="info-label">תאריך תפיסה:</span><span>${c.capturedAt ? formatDate(c.capturedAt) : '-'} (${daysPassed} ימים)</span></div>
+    <div class="info-row"><span class="info-label">פג תוקף:</span><span style="color:var(--warning);font-weight:600;">${c.captureExpiredAt ? formatDate(c.captureExpiredAt) : '-'} (לפני ${expiredDays} ימים)</span></div>
+    <hr class="divider">
+    <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
+      <input type="number" id="ext-days-modal-${commId}" min="1" max="90" value="${appSettings.captureExpiryDays}"
+        style="width:70px;padding:6px 10px;border:2px solid var(--border);border-radius:8px;font-size:13px;">
+      <button class="btn btn-primary btn-sm" onclick="handleExpiredCapture('${commId}','extend',parseInt(document.getElementById('ext-days-modal-${commId}').value)||${appSettings.captureExpiryDays});closeModal('modal-comm-detail');">⏱ המשך תפיסה</button>
+    </div>`;
+
+  document.getElementById('detail-title').textContent = c.name || 'פרטי תפיסה';
+  document.getElementById('detail-content').innerHTML = html;
+  document.getElementById('detail-actions').innerHTML =
+    `<button class="btn btn-danger btn-sm" onclick="handleExpiredCapture('${commId}','release');closeModal('modal-comm-detail');">🔓 שחרר תפיסה</button>
+     <button class="btn btn-ghost" onclick="closeModal('modal-comm-detail')">סגור</button>`;
+  openModal('modal-comm-detail');
 }
 
 // ============================================================
