@@ -4517,7 +4517,7 @@ async function runSearch() {
 
   let filtered = commsEntries.filter(([,c]) => {
     if (!matchingProjectIds.has(c.projectId)) return false;
-    if (matchingTypeIds && !matchingTypeIds.has(c.typeId)) return false;
+    if (matchingTypeIds && !matchingTypeIds.has(c.typeId) && !(c.name||'').toLowerCase().includes(typeTextQuery)) return false;
     if (commNameQuery && !(c.name||'').toLowerCase().includes(commNameQuery)) return false;
     if (c.status !== 'available') return false; // רק פנויות
     return true;
