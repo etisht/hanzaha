@@ -1124,6 +1124,7 @@
 <!-- Firebase SDK v9 compat -->
 <script src="https://cdn.jsdelivr.net/npm/@emailjs/browser@4/dist/email.min.js"></script>
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-auth-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-database-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-storage-compat.js"></script>
 
@@ -1231,6 +1232,17 @@ function initFirebase() {
   } catch(e) {
     console.error('Firebase init failed:', e);
     return false;
+  }
+}
+
+// חובה לפני כל קריאה/כתיבה ל-DB: כללי האבטחה ב-Firebase דורשים auth != null,
+// וללא זה בקשות ה-REST הישירות (curl וכו') ייחסמו אך האפליקציה תמשיך לעבוד.
+async function ensureFirebaseAuth() {
+  try {
+    await firebase.auth().signInAnonymously();
+  } catch(e) {
+    console.error('Anonymous auth failed:', e);
+    throw e;
   }
 }
 
@@ -4384,13 +4396,13 @@ function renderSearchPage() {
           <option value="finished">✓ הסתיים</option>
         </select>
       </div>
-      <div>
+      <div style="position:relative;">
         <div class="filter-label" style="margin-bottom:6px;">סוג הנצחה</div>
-        <input class="filter-select" id="search-type-text" list="search-type-list"
-          placeholder="הקלד לסינון..." style="min-width:180px;" oninput="debounceSearch()">
-        <datalist id="search-type-list">
-          ${Object.entries(allTypes).map(([id,t]) => `<option value="${esc(t.name)}" data-id="${id}">`).join('')}
-        </datalist>
+        <input class="filter-select" id="search-type-text" autocomplete="off"
+          placeholder="הקלד לסינון..." style="min-width:180px;"
+          oninput="onTypeFilterInput()" onfocus="onTypeFilterInput()"
+          onblur="setTimeout(()=>{const d=document.getElementById('search-type-suggest'); if(d) d.style.display='none';}, 150)">
+        <div id="search-type-suggest" style="display:none;position:absolute;top:100%;right:0;left:0;z-index:60;background:var(--bg-card,#fff);border:1px solid var(--border,#ddd);border-radius:8px;margin-top:4px;max-height:220px;overflow-y:auto;box-shadow:0 4px 12px rgba(0,0,0,0.15);"></div>
       </div>
       <div>
         <div class="filter-label" style="margin-bottom:6px;">מיון</div>
@@ -4417,6 +4429,31 @@ let _searchDebounce = null;
 function debounceSearch() {
   clearTimeout(_searchDebounce);
   _searchDebounce = setTimeout(runSearch, 350);
+}
+
+function onTypeFilterInput() {
+  const input = document.getElementById('search-type-text');
+  const box = document.getElementById('search-type-suggest');
+  if (!input || !box) return;
+  const q = input.value.trim().toLowerCase();
+  const matches = Object.entries(allTypes).filter(([,t]) => t.name.toLowerCase().includes(q));
+  if (!matches.length) {
+    box.style.display = 'none';
+  } else {
+    box.innerHTML = matches.map(([id,t]) =>
+      `<div style="padding:8px 12px;cursor:pointer;" onmousedown="selectTypeFilter('${esc(t.name).replace(/'/g,"\\'")}')" onmouseover="this.style.background='var(--hover-bg,#f3f3f3)'" onmouseout="this.style.background=''">${esc(t.name)}</div>`
+    ).join('');
+    box.style.display = 'block';
+  }
+  debounceSearch();
+}
+
+function selectTypeFilter(name) {
+  const input = document.getElementById('search-type-text');
+  const box = document.getElementById('search-type-suggest');
+  if (input) input.value = name;
+  if (box) box.style.display = 'none';
+  runSearch();
 }
 
 async function runSearch() {
@@ -4864,6 +4901,16 @@ async function seedIfNeeded() {
 // ============================================================
 (async function init() {
   const ok = initFirebase();
+
+  if (ok) {
+    try {
+      await ensureFirebaseAuth();
+    } catch(e) {
+      document.getElementById('login-screen').style.display = 'flex';
+      showLoginError('שגיאת חיבור למסד הנתונים: ' + e.message);
+      return;
+    }
+  }
 
   // Restore session
   const sessionStr = localStorage.getItem('hn_session');
