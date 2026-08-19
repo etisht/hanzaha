@@ -198,13 +198,21 @@
       background: var(--bg-card); border-radius: 8px;
       padding: 10px 12px; border: 2px solid var(--border);
       cursor: pointer; transition: all 0.18s; position: relative;
+      display: flex; flex-direction: column; min-height: 152px;
     }
     .comm-card:hover { box-shadow: var(--shadow); }
     .comm-card.status-available { border-color: #66BB6A; background: #F2FBF3; }
     .comm-card.status-captured { border-color: #FFA726; background: #FFFBF0; }
     .comm-card.status-sold { border-color: #9E9E9E; background: #F7F7F7; opacity: 0.9; }
     .comm-card.status-available-completion { border-color: #42A5F5; background: #E3F2FD; }
-    .comm-card-name { font-size: 12px; font-weight: 700; color: var(--primary-dark); margin-bottom: 2px; padding-left: 50px; }
+    .comm-card-project-name {
+      font-size: 13px; font-weight: 700; color: var(--primary); margin-bottom: 4px; line-height: 1.3; padding-left: 50px;
+      display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
+    }
+    .comm-card-name {
+      font-size: 12px; font-weight: 700; color: var(--primary-dark); margin-bottom: 2px; padding-left: 50px; line-height: 1.3;
+      display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
+    }
     .comm-card-type { font-size: 11px; color: var(--text-muted); margin-bottom: 6px; }
     .comm-card-price { font-size: 13px; font-weight: 700; color: var(--accent); }
     .comm-status-badge {
@@ -217,7 +225,7 @@
     .badge-completion { background: #1565C0; color: white; }
     .tag-completion { background: #E3F2FD; color: #1565C0; }
     .comm-meta { font-size: 11px; color: var(--text-muted); margin-top: 6px; line-height: 1.5; }
-    .comm-actions { margin-top: 8px; display: flex; gap: 6px; flex-wrap: wrap; }
+    .comm-actions { margin-top: auto; padding-top: 8px; display: flex; gap: 6px; flex-wrap: wrap; }
 
     /* ===== TABLE ===== */
     .data-table { width: 100%; border-collapse: collapse; }
@@ -1614,10 +1622,19 @@ function getProjectStatus(p) {
   return p.isActive ? 'active' : 'closed';
 }
 
+const STAGE_COLOR_PALETTE = ['#5C6BC0', '#F57C00', '#00897B', '#43A047', '#8E24AA', '#EF5350', '#26A69A', '#7E57C2'];
+function getStageColor(stage) {
+  const idx = appSettings.projectStages.indexOf(stage);
+  return idx >= 0 ? STAGE_COLOR_PALETTE[idx % STAGE_COLOR_PALETTE.length] : 'var(--primary)';
+}
+function getStageOrder(stage) {
+  const idx = appSettings.projectStages.indexOf(stage);
+  return idx >= 0 ? idx + 1 : 0;
+}
+
 function renderProjectCard(id, p) {
   const pStatus = getProjectStatus(p);
-  const stageColors = { 'תכנון': '#5C6BC0', 'בניה': '#F57C00', 'גימור': '#00897B', 'סיום': '#43A047' };
-  const stageBadge = p.stage ? `<span style="display:inline-flex;align-items:center;padding:2px 10px;border-radius:20px;font-size:11px;font-weight:700;background:${stageColors[p.stage]||'var(--primary)'};color:white;margin-right:6px;">📍 ${esc(p.stage)}</span>` : '';
+  const stageBadge = p.stage ? `<span style="display:inline-flex;align-items:center;padding:2px 10px;border-radius:20px;font-size:11px;font-weight:700;background:${getStageColor(p.stage)};color:white;margin-right:6px;">📍 ${esc(p.stage)}</span>` : '';
   const completionBadge = p.expectedCompletion ? `<span style="font-size:12px;color:var(--text-muted);">🗓 צפי: ${esc(p.expectedCompletion)}</span>` : '';
   const statusTag = pStatus === 'active' ? '<span class="tag tag-success">● פתוח למכירה</span>' :
                     pStatus === 'completion' ? '<span class="tag tag-completion">🔵 להשלמה</span>' :
@@ -1769,6 +1786,7 @@ function renderCommCard(id, c, blockedByWhole) {
   const pStatus = getProjectStatus(project || {});
   const isProjectActive = pStatus === 'active' || pStatus === 'completion';
   const isMine = c.capturedBy === currentUser.uid;
+  const isPrivileged = currentUser.role === 'admin' || currentUser.role === 'senior';
 
   const isBlocked = blockedByWhole && !c.isWholeProject && c.status === 'available';
   const isDisabled = !!c.isDisabled;
@@ -1791,7 +1809,7 @@ function renderCommCard(id, c, blockedByWhole) {
         <button class="btn btn-primary btn-sm" onclick="event.stopPropagation();openCapture('${id}')" style="flex:1;">✋ תפוס</button>
         <button class="btn btn-accent btn-sm" onclick="event.stopPropagation();openDirectSell('${id}')" style="flex:1;">💰 רכישה</button>
       </div>`;
-    } else if (c.status === 'captured' && isMine) {
+    } else if (c.status === 'captured' && (isMine || isPrivileged)) {
       actions = `<div class="comm-actions">
         <button class="btn btn-accent btn-sm" onclick="event.stopPropagation();openSell('${id}')">💰 רכישה</button>
         <button class="btn btn-ghost btn-sm" onclick="event.stopPropagation();releaseCapture('${id}')">↩</button>
@@ -1902,7 +1920,8 @@ async function confirmCapture() {
 
 async function releaseCapture(commId) {
   const c = allComms[commId];
-  if (!c || c.capturedBy !== currentUser.uid) return;
+  const isPrivileged = currentUser.role === 'admin' || currentUser.role === 'senior';
+  if (!c || (c.capturedBy !== currentUser.uid && !isPrivileged)) return;
   if (!confirm('לשחרר את התפיסה? ההנצחה תחזור לזמינה.')) return;
 
   if (!IS_CONFIGURED) {
@@ -1966,7 +1985,8 @@ function openDirectSell(commId) {
 function openSell(commId) {
   if (currentUser.role === 'viewer') return;
   const c = allComms[commId];
-  if (!c || c.status !== 'captured' || c.capturedBy !== currentUser.uid) {
+  const isPrivileged = currentUser.role === 'admin' || currentUser.role === 'senior';
+  if (!c || c.status !== 'captured' || (c.capturedBy !== currentUser.uid && !isPrivileged)) {
     showToast('אין באפשרותך למכור הנצחה זו', 'error'); return;
   }
   pendingDirectSell = false;
@@ -3199,7 +3219,6 @@ function renderDrawerView() {
   const pStatus = getProjectStatus(p);
   const statusLabel = pStatus === 'active' ? 'פתוח למכירה' : pStatus === 'completion' ? 'להשלמה' : pStatus === 'finished' ? 'הסתיים' : 'סגור';
   const statusClass = pStatus === 'active' ? 'tag-success' : pStatus === 'completion' ? 'tag-completion' : pStatus === 'finished' ? 'tag-completion' : 'tag-warning';
-  const stageColors = { 'תכנון': '#5C6BC0', 'בניה': '#F57C00', 'גימור': '#00897B', 'סיום': '#43A047' };
   const priorityLabels = { 1: 'גבוהה מאוד', 2: 'גבוהה', 3: 'בינונית', 4: 'נמוכה', 5: 'נמוכה מאוד' };
 
   // סטטיסטיקת הנצחות מהנתונים הטעונים
@@ -3217,7 +3236,7 @@ function renderDrawerView() {
     <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:20px;align-items:center;">
       <span class="tag ${statusClass}" style="font-size:13px;padding:4px 12px;">${pStatus === 'completion' ? '🔵 ' : ''}${statusLabel}</span>
       <span class="priority-badge priority-${p.priority||3}" title="עדיפות">${p.priority||3}</span>
-      ${p.stage ? `<span style="display:inline-block;padding:4px 12px;border-radius:20px;font-size:12px;font-weight:700;background:${stageColors[p.stage]||'var(--primary)'};color:white;">📍 ${esc(p.stage)}</span>` : ''}
+      ${p.stage ? `<span style="display:inline-block;padding:4px 12px;border-radius:20px;font-size:12px;font-weight:700;background:${getStageColor(p.stage)};color:white;">📍 ${esc(p.stage)}</span>` : ''}
     </div>
 
     <!-- פרטים בסיסיים -->
@@ -3225,7 +3244,7 @@ function renderDrawerView() {
       <div class="drawer-section-title">📋 פרטי פרויקט</div>
       <div class="drawer-row"><span class="drawer-lbl">סטאטוס:</span> <span class="tag ${statusClass}" style="font-size:12px;">${statusLabel}</span></div>
       <div class="drawer-row"><span class="drawer-lbl">עדיפות:</span> <strong>${p.priority||3}</strong> — ${priorityLabels[p.priority||3]||''}</div>
-      <div class="drawer-row"><span class="drawer-lbl">שלב נוכחי:</span> ${p.stage ? `<span style="background:${stageColors[p.stage]||'var(--primary)'};color:white;padding:2px 10px;border-radius:20px;font-size:12px;font-weight:700;">${esc(p.stage)}</span>` : '<span style="color:var(--text-muted)">לא הוגדר</span>'}</div>
+      <div class="drawer-row"><span class="drawer-lbl">שלב נוכחי:</span> ${p.stage ? `<span style="background:${getStageColor(p.stage)};color:white;padding:2px 10px;border-radius:20px;font-size:12px;font-weight:700;">${esc(p.stage)}</span>` : '<span style="color:var(--text-muted)">לא הוגדר</span>'}</div>
       <div class="drawer-row"><span class="drawer-lbl">צפי לסיום:</span> ${p.expectedCompletion ? `<strong>${esc(p.expectedCompletion)}</strong>` : '<span style="color:var(--text-muted)">לא הוגדר</span>'}</div>
       <div class="drawer-row"><span class="drawer-lbl">נוצר:</span> ${p.createdAt ? new Date(p.createdAt).toLocaleDateString('he-IL') : '—'}</div>
     </div>
@@ -3430,8 +3449,6 @@ function sortAdminProjects(key) {
 }
 
 function renderAdminProjectsTable() {
-  const stageColors = { 'תכנון': '#5C6BC0', 'בניה': '#F57C00', 'גימור': '#00897B', 'סיום': '#43A047' };
-  const stageOrder = { 'תכנון': 1, 'בניה': 2, 'גימור': 3, 'סיום': 4 };
   const statusOrder = { active: 1, completion: 2, finished: 3, closed: 4 };
   const commsCounts = _adminProjectsCommsCounts;
   const textFilter = (document.getElementById('filter-admin-project-text')?.value || '').trim().toLowerCase();
@@ -3444,7 +3461,7 @@ function renderAdminProjectsTable() {
     let va, vb;
     if (key === 'priority') { va = a[1].priority || 3; vb = b[1].priority || 3; }
     else if (key === 'name') { va = a[1].name || ''; vb = b[1].name || ''; return va.localeCompare(vb, 'he') * dir; }
-    else if (key === 'stage') { va = stageOrder[a[1].stage] || 0; vb = stageOrder[b[1].stage] || 0; }
+    else if (key === 'stage') { va = getStageOrder(a[1].stage); vb = getStageOrder(b[1].stage); }
     else if (key === 'status') { va = statusOrder[getProjectStatus(a[1])] || 0; vb = statusOrder[getProjectStatus(b[1])] || 0; }
     if (va !== vb) return (va - vb) * dir;
     return (b[1].createdAt||0) - (a[1].createdAt||0);
@@ -3473,7 +3490,7 @@ function renderAdminProjectsTable() {
         ${countsHtml}
       </td>
       <td>
-        ${p.stage ? `<span style="display:inline-block;padding:2px 10px;border-radius:20px;font-size:11px;font-weight:700;background:${stageColors[p.stage]||'var(--primary)'};color:white;margin-bottom:4px;">📍 ${esc(p.stage)}</span><br>` : ''}
+        ${p.stage ? `<span style="display:inline-block;padding:2px 10px;border-radius:20px;font-size:11px;font-weight:700;background:${getStageColor(p.stage)};color:white;margin-bottom:4px;">📍 ${esc(p.stage)}</span><br>` : ''}
         ${p.expectedCompletion ? `<span style="font-size:12px;color:var(--text-muted);">🗓 ${esc(p.expectedCompletion)}</span>` : ''}
       </td>
       <td>${statusTag}</td>
@@ -4583,6 +4600,7 @@ function renderSearchCommCard(id, c) {
   const badgeClasses = { available: 'badge-available', captured: 'badge-captured', sold: 'badge-sold' };
   const priority = project.priority || 3;
   const isMine = c.capturedBy === currentUser.uid;
+  const isPrivileged = currentUser.role === 'admin' || currentUser.role === 'senior';
   const pStatus = getProjectStatus(project);
   const isCompletion = pStatus === 'completion';
   const isProjectActive = pStatus === 'active' || pStatus === 'completion';
@@ -4608,7 +4626,7 @@ function renderSearchCommCard(id, c) {
         <button class="btn btn-primary btn-sm" onclick="event.stopPropagation();openCapture('${id}')" style="flex:1;">✋ תפוס</button>
         <button class="btn btn-accent btn-sm" onclick="event.stopPropagation();openDirectSell('${id}')" style="flex:1;">💰 רכישה</button>
       </div>`;
-    } else if (c.status === 'captured' && isMine) {
+    } else if (c.status === 'captured' && (isMine || isPrivileged)) {
       actions = `<div class="comm-actions">
         <button class="btn btn-accent btn-sm" onclick="event.stopPropagation();openSell('${id}')">💰 רכישה</button>
         <button class="btn btn-ghost btn-sm" onclick="event.stopPropagation();releaseCapture('${id}')">↩</button>
@@ -4618,7 +4636,7 @@ function renderSearchCommCard(id, c) {
 
   return `<div class="comm-card ${cardClass}"${cardStyleAttr} onclick="openCommDetail('${id}')">
     <span class="comm-status-badge ${badgeClass}">${badgeLabel}</span>
-    <div style="font-size:13px;font-weight:700;color:var(--primary);margin-bottom:4px;line-height:1.3;padding-left:50px;">
+    <div class="comm-card-project-name">
       <span class="priority-badge priority-${priority}" style="font-size:9px;padding:1px 4px;margin-left:3px;">${priority}</span>${esc(project.name)}
     </div>
     <div class="comm-card-name" style="padding-left:0;">${wholeProjectBadge}${unitBadgeSearch}${esc(c.name)}</div>
