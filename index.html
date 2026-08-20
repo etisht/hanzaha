@@ -2059,7 +2059,8 @@ async function confirmSell() {
     const snap = await db.ref(`commemorations/${commId}`).once('value');
     const current = snap.val();
     if (!current) { errEl.textContent = 'הנצחה לא נמצאה'; errEl.style.display = 'block'; return; }
-    if (!isDirectSell && (current.status !== 'captured' || current.capturedBy !== currentUser.uid)) {
+    const isPrivileged = currentUser.role === 'admin' || currentUser.role === 'senior';
+    if (!isDirectSell && (current.status !== 'captured' || (current.capturedBy !== currentUser.uid && !isPrivileged))) {
       errEl.textContent = 'מצב ההנצחה השתנה — נא לרענן ולנסות שוב';
       errEl.style.display = 'block'; return;
     }
