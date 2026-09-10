@@ -3309,6 +3309,13 @@ function renderDrawerView() {
       <div class="drawer-section-body">${esc(p.description)}</div>
     </div>` : ''}
 
+    ${(p.region || p.population != null) ? `
+    <div class="drawer-section">
+      <div class="drawer-section-title">🗺️ נתוני איזור</div>
+      ${p.region ? `<div class="drawer-row"><span class="drawer-lbl">איזור:</span> <strong>${esc(p.region)}</strong></div>` : ''}
+      ${p.population != null ? `<div class="drawer-row"><span class="drawer-lbl">מס׳ תושבים:</span> <strong>${p.population.toLocaleString()}</strong></div>` : ''}
+    </div>` : ''}
+
     ${p.notes ? `
     <div class="drawer-section">
       <div class="drawer-section-title">📝 הערות</div>
@@ -3370,6 +3377,17 @@ function startDrawerEdit() {
       <textarea class="form-control" id="drawer-description" rows="3" style="resize:vertical;">${esc(p.description||'')}</textarea>
     </div>
     <div class="form-group">
+      <label>איזור בארץ</label>
+      <select class="form-control" id="drawer-region">
+        <option value="">— בחר איזור —</option>
+        ${ISRAEL_REGIONS.map(r => `<option value="${esc(r)}"${p.region === r ? ' selected' : ''}>${esc(r)}</option>`).join('')}
+      </select>
+    </div>
+    <div class="form-group">
+      <label>מספר תושבים</label>
+      <input class="form-control" type="number" min="0" id="drawer-population" value="${p.population != null ? p.population : ''}" placeholder="מספר תושבים (רשות)">
+    </div>
+    <div class="form-group">
       <label>הערות</label>
       <textarea class="form-control" id="drawer-notes" rows="3" style="resize:vertical;">${esc(p.notes||'')}</textarea>
     </div>
@@ -3418,6 +3436,9 @@ async function saveDrawerProject() {
   if (!name) { showToast('נא להזין שם פרויקט', 'error'); return; }
 
   const description = document.getElementById('drawer-description').value.trim();
+  const region      = document.getElementById('drawer-region').value || null;
+  const populationRaw = document.getElementById('drawer-population').value;
+  const population  = populationRaw !== '' ? parseInt(populationRaw) : null;
   const notes       = document.getElementById('drawer-notes').value.trim();
   const projectStatus = document.getElementById('drawer-status').value || 'active';
   const priority    = parseInt(document.getElementById('drawer-priority').value) || 3;
@@ -3425,7 +3446,7 @@ async function saveDrawerProject() {
   const expectedCompletion = document.getElementById('drawer-expected').value || null;
   const isActive    = projectStatus !== 'closed';
 
-  const data = { name, description: description||null, notes: notes||null, priority, stage, expectedCompletion, projectStatus, isActive };
+  const data = { name, description: description||null, region, population, notes: notes||null, priority, stage, expectedCompletion, projectStatus, isActive };
 
   if (!IS_CONFIGURED) {
     Object.assign(allProjects[id], data);
