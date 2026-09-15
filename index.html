@@ -6,6 +6,9 @@
   <title>ניהול הנצחות - טהרת המשפחה</title>
   <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 38 38'%3E%3Ccircle cx='19' cy='19' r='19' fill='%234A3060'/%3E%3Cpath d='M19 6C19 6 11 15 11 21a8 8 0 0 0 16 0C27 15 19 6 19 6z' fill='%23E8CC80'/%3E%3Cpath d='M19 10C19 10 14 17 14 21a5 5 0 0 0 10 0C24 17 19 10 19 10z' fill='white' opacity='0.8'/%3E%3Ctext x='19' y='25' text-anchor='middle' font-family='Heebo,sans-serif' font-size='8' font-weight='800' fill='%234A3060'%3E%D7%98.%D7%9E%3C/text%3E%3C/svg%3E">
   <link href="https://fonts.googleapis.com/css2?family=Heebo:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+  <link rel="manifest" href="manifest.json">
+  <meta name="theme-color" content="#4A3060">
+  <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
   <style>
     :root {
       --primary: #6B4C8B;
@@ -669,7 +672,10 @@
         <button class="mobile-menu-btn" onclick="openSidebar()">☰</button>
         <div class="topbar-title" id="topbar-title">פרויקטים</div>
       </div>
-      <div class="topbar-actions" id="topbar-actions"></div>
+      <div style="display:flex;align-items:center;gap:8px;">
+        <div class="topbar-actions" id="topbar-actions"></div>
+        <button class="btn btn-sm btn-ghost" id="install-app-btn" onclick="installApp()" hidden>⬇️ התקן אפליקציה</button>
+      </div>
     </div>
     <div class="page-content" id="page-content">
       <div class="empty-state"><div class="empty-icon">⏳</div><h3>טוען...</h3></div>
@@ -5048,6 +5054,34 @@ async function seedIfNeeded() {
 
   document.getElementById('login-screen').style.display = 'flex';
 })();
+
+// --- PWA install ---
+let deferredInstallPrompt = null;
+
+window.addEventListener('beforeinstallprompt', (e) => {
+  e.preventDefault();
+  deferredInstallPrompt = e;
+  document.getElementById('install-app-btn').hidden = false;
+});
+
+window.addEventListener('appinstalled', () => {
+  deferredInstallPrompt = null;
+  document.getElementById('install-app-btn').hidden = true;
+});
+
+async function installApp() {
+  if (!deferredInstallPrompt) return;
+  document.getElementById('install-app-btn').hidden = true;
+  deferredInstallPrompt.prompt();
+  await deferredInstallPrompt.userChoice;
+  deferredInstallPrompt = null;
+}
+
+if ('serviceWorker' in navigator) {
+  window.addEventListener('load', () => {
+    navigator.serviceWorker.register('sw.js').catch(() => {});
+  });
+}
 </script>
 </body>
 </html>
