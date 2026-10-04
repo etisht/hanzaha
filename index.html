@@ -598,7 +598,7 @@
         <div class="nav-item" onclick="showPage('search')" data-page="search">
           <span class="nav-icon">🔍</span> חיפוש הנצחות
         </div>
-        <div class="nav-item" onclick="showPage('sold-report')" data-page="sold-report">
+        <div class="nav-item" id="nav-viewer-sold-report" onclick="showPage('sold-report')" data-page="sold-report">
           <span class="nav-icon">🧾</span> דוח הנצחות שנמכרו
         </div>
       </div>
@@ -1004,6 +1004,7 @@
         <option value="user">משתמש רגיל</option>
         <option value="senior">משתמש בכיר (הכל חוץ מהוספת מוצרים)</option>
         <option value="viewer">צפייה בלבד</option>
+        <option value="basic">צפייה בסיסית (פנוי / לא פנוי בלבד)</option>
         <option value="admin">אדמין</option>
       </select>
     </div>
@@ -1352,6 +1353,11 @@ function doLogout() {
 // ============================================================
 //  APP START
 // ============================================================
+// 'viewer' = צפייה בלבד; 'basic' = צפייה בסיסית — רק פנוי/לא פנוי, בלי פרטי תופס/תורם/מוכר
+function isBasicViewer() { return currentUser?.role === 'basic'; }
+function isReadOnlyRole() { return currentUser?.role === 'viewer' || currentUser?.role === 'basic'; }
+const BASIC_ALLOWED_PAGES = ['projects', 'project-detail', 'search'];
+
 async function startApp() {
   document.getElementById('login-screen').style.display = 'none';
   document.getElementById('app').style.display = 'block';
@@ -1366,11 +1372,12 @@ async function startApp() {
     document.getElementById('nav-admin-types').style.display = seniorHidden ? 'none' : '';
     document.getElementById('nav-admin-settings').style.display = seniorHidden ? 'none' : '';
     document.getElementById('nav-expired').style.display = seniorHidden ? 'none' : '';
-  } else if (currentUser.role === 'viewer') {
+  } else if (isReadOnlyRole()) {
     document.getElementById('nav-admin-section').style.display = 'none';
     document.getElementById('nav-user-section').style.display = 'none';
     document.getElementById('nav-viewer-section').style.display = 'block';
     document.getElementById('nav-about').style.display = 'none';
+    document.getElementById('nav-viewer-sold-report').style.display = isBasicViewer() ? 'none' : '';
   } else {
     document.getElementById('nav-admin-section').style.display = 'none';
     document.getElementById('nav-user-section').style.display = 'block';
@@ -1401,7 +1408,7 @@ async function startApp() {
   } else if (currentUser.role === 'senior') {
     showPage('projects');
     setTimeout(checkWordingReminders, 3000);
-  } else if (currentUser.role === 'viewer') {
+  } else if (isReadOnlyRole()) {
     showPage('search');
   } else {
     showPage('projects');
@@ -1515,6 +1522,7 @@ window.addEventListener('popstate', function(e) {
 });
 
 function showPage(page, projectId) {
+  if (isBasicViewer() && !BASIC_ALLOWED_PAGES.includes(page)) page = 'search';
   document.querySelectorAll('.nav-item').forEach(el => el.classList.remove('active'));
   const navEl = document.querySelector(`.nav-item[data-page="${page}"]`);
   if (navEl) navEl.classList.add('active');
@@ -1709,7 +1717,9 @@ function updateProjectStats(projectId, comms) {
   const pbEl = document.getElementById(`pb-${projectId}`);
   const psEl = document.getElementById(`ps-${projectId}`);
   if (pbEl) pbEl.style.width = pct + '%';
-  if (psEl) psEl.innerHTML = `<strong>${sold}</strong> נמכרו מתוך <strong>${total}</strong>`;
+  if (psEl) psEl.innerHTML = isBasicViewer()
+    ? `<strong>${comms.filter(c => c.status === 'available').length}</strong> פנויות מתוך <strong>${total}</strong>`
+    : `<strong>${sold}</strong> נמכרו מתוך <strong>${total}</strong>`;
 }
 
 // ============================================================
@@ -1749,8 +1759,8 @@ async function renderProjectDetailPage() {
       <select class="filter-select" id="filter-status" onchange="filterComms()">
         <option value="">כל הסטאטוסים</option>
         <option value="available">פנויה</option>
-        <option value="captured">תפוסה</option>
-        <option value="sold">נמכרה</option>
+        ${isBasicViewer() ? '<option value="taken">לא פנויה</option>' : `<option value="captured">תפוסה</option>
+        <option value="sold">נמכרה</option>`}
       </select>
     </div>
     <div id="comms-stats" class="stats-row"></div>
@@ -1784,6 +1794,13 @@ function renderCommsStats() {
   const sold = vals.filter(c => c.status === 'sold').length;
   const el = document.getElementById('comms-stats');
   if (!el) return;
+  if (isBasicViewer()) {
+    el.innerHTML = `
+    <div class="stat-chip"><span class="stat-icon">📊</span><div><div class="stat-num">${total}</div><div class="stat-lbl">סה"כ</div></div></div>
+    <div class="stat-chip"><span class="stat-icon" style="color:#4CAF50">✅</span><div><div class="stat-num" style="color:#4CAF50">${available}</div><div class="stat-lbl">פנויות</div></div></div>
+    <div class="stat-chip"><span class="stat-icon" style="color:#9E9E9E">⛔</span><div><div class="stat-num" style="color:#9E9E9E">${total - available}</div><div class="stat-lbl">לא פנויות</div></div></div>`;
+    return;
+  }
   el.innerHTML = `
     <div class="stat-chip"><span class="stat-icon">📊</span><div><div class="stat-num">${total}</div><div class="stat-lbl">סה"כ</div></div></div>
     <div class="stat-chip"><span class="stat-icon" style="color:#4CAF50">✅</span><div><div class="stat-num" style="color:#4CAF50">${available}</div><div class="stat-lbl">פנויות</div></div></div>
@@ -1800,7 +1817,8 @@ function renderCommsGrid() {
   let items = Object.entries(allComms);
   if (nameFilter) items = items.filter(([,c]) => (c.name||'').toLowerCase().includes(nameFilter));
   if (typeFilter) items = items.filter(([,c]) => c.typeId === typeFilter);
-  if (statusFilter) items = items.filter(([,c]) => c.status === statusFilter);
+  if (statusFilter === 'taken') items = items.filter(([,c]) => c.status !== 'available');
+  else if (statusFilter) items = items.filter(([,c]) => c.status === statusFilter);
 
   const container = document.getElementById('comms-container');
   if (!container) return;
@@ -1839,7 +1857,9 @@ function renderCommCard(id, c, blockedByWhole) {
   const isDisabled = !!c.isDisabled;
 
   let meta = '';
-  if (isDisabled && c.status === 'available') {
+  if (isBasicViewer()) {
+    // צפייה בסיסית: לא מציגים מי תפס / מי תרם
+  } else if (isDisabled && c.status === 'available') {
     meta = `<div class="comm-meta" style="color:#9E9E9E;">🔒 לא למכירה</div>`;
   } else if (c.status === 'captured') {
     meta = `<div class="comm-meta">תפוס: <strong>${esc(c.capturedByName||'')}</strong></div>`;
@@ -1850,7 +1870,7 @@ function renderCommCard(id, c, blockedByWhole) {
   }
 
   let actions = '';
-  if (isProjectActive && !isBlocked && !isDisabled && currentUser.role !== 'viewer') {
+  if (isProjectActive && !isBlocked && !isDisabled && !isReadOnlyRole()) {
     if (c.status === 'available') {
       actions = `<div class="comm-actions">
         <button class="btn btn-primary btn-sm" onclick="event.stopPropagation();openCapture('${id}')" style="flex:1;">✋ תפוס</button>
@@ -1867,7 +1887,8 @@ function renderCommCard(id, c, blockedByWhole) {
   const isCompletionAvailable = c.status === 'available' && !isBlocked && !isDisabled && pStatus === 'completion';
   const cardClass = isDisabled && c.status === 'available' ? 'status-blocked' : (isBlocked ? 'status-blocked' : (isCompletionAvailable ? 'status-available-completion' : `status-${c.status}`));
   const badgeClass = isDisabled && c.status === 'available' ? 'badge-sold' : (isBlocked ? 'badge-sold' : (isCompletionAvailable ? 'badge-completion' : badgeClasses[c.status]));
-  const badgeLabel = isDisabled && c.status === 'available' ? '🔒 לא למכירה' : (isBlocked ? '🔒 חסומה' : (isCompletionAvailable ? '🔵 להשלמה' : statusLabels[c.status]));
+  let badgeLabel = isDisabled && c.status === 'available' ? '🔒 לא למכירה' : (isBlocked ? '🔒 חסומה' : (isCompletionAvailable ? '🔵 להשלמה' : statusLabels[c.status]));
+  if (isBasicViewer() && c.status !== 'available') badgeLabel = 'לא פנויה';
 
   const cardStyle = (isBlocked || isDisabled) ? ' style="opacity:0.55;border-color:#ccc;"' : '';
   const wholeProjectBadge = c.isWholeProject ? '<span style="font-size:10px;background:#FFF3E0;color:#E65100;border-radius:4px;padding:1px 5px;font-weight:600;margin-bottom:2px;display:inline-block;">⭐ כל הפרויקט</span><br>' : '';
@@ -1886,7 +1907,7 @@ function renderCommCard(id, c, blockedByWhole) {
 //  CAPTURE
 // ============================================================
 function openCapture(commId) {
-  if (currentUser.role === 'viewer') return;
+  if (isReadOnlyRole()) return;
   const c = allComms[commId];
   if (!c || c.status !== 'available') { showToast('ההנצחה כבר לא זמינה', 'error'); renderCommsGrid(); return; }
   if (!c.isWholeProject) {
@@ -2000,7 +2021,7 @@ async function updateCaptureLogRelease(commId, releasedAt, reason) {
 let pendingDirectSell = false;
 
 function openDirectSell(commId) {
-  if (currentUser.role === 'viewer') return;
+  if (isReadOnlyRole()) return;
   const c = allComms[commId];
   if (!c || c.status !== 'available') { showToast('ההנצחה כבר לא זמינה', 'error'); return; }
   if (!c.isWholeProject) {
@@ -2030,7 +2051,7 @@ function openDirectSell(commId) {
 //  SELL
 // ============================================================
 function openSell(commId) {
-  if (currentUser.role === 'viewer') return;
+  if (isReadOnlyRole()) return;
   const c = allComms[commId];
   const isPrivileged = currentUser.role === 'admin' || currentUser.role === 'senior';
   if (!c || c.status !== 'captured' || (c.capturedBy !== currentUser.uid && !isPrivileged)) {
@@ -2161,13 +2182,15 @@ function openCommDetail(commId) {
     <div class="info-row"><span class="info-label">שם:</span><span>${esc(c.name)}</span></div>
     <div class="info-row"><span class="info-label">סוג:</span><span>${esc(type)}</span></div>
     <div class="info-row"><span class="info-label">מחיר:</span><span style="font-weight:700;color:var(--accent)">₪${(c.price||0).toLocaleString()}</span></div>
-    <div class="info-row"><span class="info-label">סטאטוס:</span><span>${statusLabels[c.status]||''}</span></div>`;
+    <div class="info-row"><span class="info-label">סטאטוס:</span><span>${isBasicViewer() ? (c.status === 'available' ? 'פנויה' : 'לא פנויה') : (statusLabels[c.status]||'')}</span></div>`;
 
   if (c.notes) {
     html += `<div class="info-row"><span class="info-label">הערות:</span><span>${esc(c.notes)}</span></div>`;
   }
 
-  if (c.status === 'captured') {
+  if (isBasicViewer()) {
+    // צפייה בסיסית: בלי פרטי תפיסה / מכירה / תורם
+  } else if (c.status === 'captured') {
     html += `<hr class="divider">
       <div class="info-row"><span class="info-label">תפוס ע"י:</span><span>${esc(c.capturedByName||'')}</span></div>
       <div class="info-row"><span class="info-label">שם תורם:</span><span>${esc(c.capturedDonorName||'-')}</span></div>
@@ -2232,7 +2255,7 @@ function openCommDetail(commId) {
   document.getElementById('detail-title').textContent = c.name;
   document.getElementById('detail-content').innerHTML = html;
 
-  const isViewer = currentUser.role === 'viewer';
+  const isViewer = isReadOnlyRole();
   let actionsHtml = `<button class="btn btn-ghost" onclick="closeModal('modal-comm-detail')">סגור</button>`;
   if (!isViewer && (c.status === 'sold' || c.status === 'captured')) {
     actionsHtml = `<button class="btn btn-primary btn-sm" onclick="openEditSold('${commId}')">✏️ ערוך פרטים</button>` + actionsHtml;
@@ -2252,6 +2275,7 @@ function openCommDetail(commId) {
 //  EDIT SOLD / CAPTURED COMM DETAILS
 // ============================================================
 function openEditSold(commId) {
+  if (isReadOnlyRole()) return;
   const c = allComms[commId];
   if (!c) return;
   closeModal('modal-comm-detail');
@@ -4018,7 +4042,7 @@ async function renderAdminUsersPage() {
     <tr>
       <td>${esc(u.displayName||'')}</td>
       <td>${esc(u.username||'')}</td>
-      <td><span class="tag ${u.role==='admin'?'tag-accent':u.role==='senior'?'tag-warning':u.role==='viewer'?'tag-gray':'tag-primary'}">${u.role==='admin'?'אדמין':u.role==='senior'?'בכיר':u.role==='viewer'?'צפייה':'משתמש'}</span></td>
+      <td><span class="tag ${u.role==='admin'?'tag-accent':u.role==='senior'?'tag-warning':(u.role==='viewer'||u.role==='basic')?'tag-gray':'tag-primary'}">${u.role==='admin'?'אדמין':u.role==='senior'?'בכיר':u.role==='viewer'?'צפייה':u.role==='basic'?'צפייה בסיסית':'משתמש'}</span></td>
       <td>
         <div class="btn-row">
           <button class="btn btn-ghost btn-sm" onclick="openUserModal('${id}')">✏️ עריכה</button>
@@ -4727,7 +4751,7 @@ function renderSearchCommCard(id, c) {
   const unitBadgeSearch = c.parentGroupId ? `<span style="font-size:10px;background:#E3F2FD;color:#1565C0;border-radius:4px;padding:1px 5px;font-weight:600;margin-bottom:2px;display:inline-block;">יחידה ${c.unitIndex||''}/${c.totalUnits||''}</span><br>` : '';
 
   let actions = '';
-  if (isProjectActive && !isBlocked && currentUser.role !== 'viewer') {
+  if (isProjectActive && !isBlocked && !isReadOnlyRole()) {
     if (c.status === 'available') {
       actions = `<div class="comm-actions">
         <button class="btn btn-primary btn-sm" onclick="event.stopPropagation();openCapture('${id}')" style="flex:1;">✋ תפוס</button>
