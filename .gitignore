@@ -1,2 +1,5 @@
 # Firebase database exports (contain sensitive user data / passwords)
 *-rtdb-export*.json
+
+# Cloud Functions dependencies
+functions/node_modules/

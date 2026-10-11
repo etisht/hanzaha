@@ -1,6 +1,80 @@
 {
   "rules": {
-    ".read": "auth != null",
-    ".write": "auth != null"
+    "users": {
+      ".read": "auth != null && root.child('users').child(auth.uid).child('role').val() === 'admin'",
+      ".indexOn": [
+        "username",
+        "email",
+        "role"
+      ],
+      "$uid": {
+        ".read": "auth != null && auth.uid === $uid"
+      }
+    },
+    "commemorations": {
+      ".read": "auth != null && root.child('users').child(auth.uid).exists() && root.child('users').child(auth.uid).child('role').val() !== 'basic'",
+      ".write": "auth != null && (root.child('users').child(auth.uid).child('role').val() === 'admin' || root.child('users').child(auth.uid).child('role').val() === 'senior')",
+      ".indexOn": [
+        "projectId",
+        "status",
+        "wordingPending"
+      ],
+      "$commId": {
+        ".write": "auth != null && root.child('users').child(auth.uid).child('role').val() === 'user' && data.exists() && newData.exists() && ((data.child('status').val() === 'available' && data.child('isDisabled').val() !== true && newData.child('status').val() === 'captured' && newData.child('capturedBy').val() === auth.uid) || (data.child('status').val() === 'available' && data.child('isDisabled').val() !== true && newData.child('status').val() === 'sold' && newData.child('soldBy').val() === auth.uid) || (data.child('status').val() === 'captured' && data.child('capturedBy').val() === auth.uid && ((newData.child('status').val() === 'captured' && newData.child('capturedBy').val() === auth.uid) || (newData.child('status').val() === 'available' && newData.child('capturedBy').val() === null) || (newData.child('status').val() === 'sold' && newData.child('soldBy').val() === auth.uid))) || (data.child('status').val() === 'sold' && data.child('soldBy').val() === auth.uid && newData.child('status').val() === 'sold' && newData.child('soldBy').val() === auth.uid)) && newData.child('projectId').val() === data.child('projectId').val() && newData.child('typeId').val() === data.child('typeId').val() && newData.child('name').val() === data.child('name').val() && newData.child('price').val() === data.child('price').val() && newData.child('isWholeProject').val() === data.child('isWholeProject').val() && newData.child('isFreeItem').val() === data.child('isFreeItem').val() && newData.child('parentGroupId').val() === data.child('parentGroupId').val() && newData.child('unitIndex').val() === data.child('unitIndex').val() && newData.child('totalUnits').val() === data.child('totalUnits').val() && newData.child('isDisabled').val() === data.child('isDisabled').val() && newData.child('notes').val() === data.child('notes').val() && newData.child('hasImage').val() === data.child('hasImage').val() && newData.child('imageUrl').val() === data.child('imageUrl').val() && newData.child('approvalChecked').val() === data.child('approvalChecked').val() && newData.child('approvalCheckedAt').val() === data.child('approvalCheckedAt').val() && newData.child('approvalCheckedBy').val() === data.child('approvalCheckedBy').val() && newData.child('signPrinted').val() === data.child('signPrinted').val() && newData.child('signPrintedAt').val() === data.child('signPrintedAt').val() && newData.child('signPrintedBy').val() === data.child('signPrintedBy').val() && newData.child('signHung').val() === data.child('signHung').val() && newData.child('signHungAt').val() === data.child('signHungAt').val() && newData.child('signHungBy').val() === data.child('signHungBy').val() && newData.child('sentToDesign').val() === data.child('sentToDesign').val() && newData.child('sentToDesignAt').val() === data.child('sentToDesignAt').val() && newData.child('sentToDesignBy').val() === data.child('sentToDesignBy').val()"
+      }
+    },
+    "commemorationsPublic": {
+      ".read": "auth != null && root.child('users').child(auth.uid).exists()",
+      ".indexOn": [
+        "projectId",
+        "status"
+      ]
+    },
+    "commemorationImages": {
+      ".read": "auth != null && root.child('users').child(auth.uid).exists() && root.child('users').child(auth.uid).child('role').val() !== 'basic'",
+      ".write": "auth != null && (root.child('users').child(auth.uid).child('role').val() === 'admin' || root.child('users').child(auth.uid).child('role').val() === 'senior')"
+    },
+    "captureLog": {
+      ".read": "auth != null && root.child('users').child(auth.uid).exists() && root.child('users').child(auth.uid).child('role').val() !== 'basic'",
+      ".write": "auth != null && (root.child('users').child(auth.uid).child('role').val() === 'admin' || root.child('users').child(auth.uid).child('role').val() === 'senior')",
+      ".indexOn": [
+        "commId",
+        "capturedAt"
+      ],
+      "$logId": {
+        ".write": "auth != null && root.child('users').child(auth.uid).child('role').val() === 'user' && newData.exists() && newData.child('capturedBy').val() === auth.uid && (!data.exists() || data.child('capturedBy').val() === auth.uid)"
+      }
+    },
+    "saleLog": {
+      ".read": "auth != null && root.child('users').child(auth.uid).exists() && root.child('users').child(auth.uid).child('role').val() !== 'basic'",
+      ".write": "auth != null && (root.child('users').child(auth.uid).child('role').val() === 'admin' || root.child('users').child(auth.uid).child('role').val() === 'senior')",
+      ".indexOn": [
+        "soldAt"
+      ],
+      "$logId": {
+        ".write": "auth != null && root.child('users').child(auth.uid).child('role').val() === 'user' && !data.exists() && newData.child('soldBy').val() === auth.uid"
+      }
+    },
+    "projects": {
+      ".read": "auth != null && root.child('users').child(auth.uid).exists()",
+      ".write": "auth != null && root.child('users').child(auth.uid).child('role').val() === 'admin'",
+      "$projectId": {
+        "typePrices": {
+          ".write": "auth != null && (root.child('users').child(auth.uid).child('role').val() === 'admin' || root.child('users').child(auth.uid).child('role').val() === 'senior')"
+        }
+      }
+    },
+    "commemorationTypes": {
+      ".read": "auth != null && root.child('users').child(auth.uid).exists()",
+      ".write": "auth != null && root.child('users').child(auth.uid).child('role').val() === 'admin'"
+    },
+    "settings": {
+      ".read": "auth != null && root.child('users').child(auth.uid).exists()",
+      ".write": "auth != null && root.child('users').child(auth.uid).child('role').val() === 'admin'"
+    },
+    "meta": {
+      ".read": "auth != null && root.child('users').child(auth.uid).exists()",
+      ".write": "auth != null && root.child('users').child(auth.uid).child('role').val() === 'admin'"
+    }
   }
 }

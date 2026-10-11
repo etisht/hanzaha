@@ -205,7 +205,7 @@
     }
     .comm-card:hover { box-shadow: var(--shadow); }
     .comm-card.status-available { border-color: #66BB6A; background: #F2FBF3; }
-    .comm-card.status-captured { border-color: #FFA726; background: #FFFBF0; }
+    .comm-card.status-captured, .comm-card.status-taken { border-color: #FFA726; background: #FFFBF0; }
     .comm-card.status-sold { border-color: #9E9E9E; background: #F7F7F7; opacity: 0.9; }
     .comm-card.status-available-completion { border-color: #42A5F5; background: #E3F2FD; }
     .comm-card-project-name {
@@ -1161,6 +1161,7 @@
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-auth-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-database-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-storage-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-functions-compat.js"></script>
 
 <script>
 // ============================================================
@@ -1185,6 +1186,7 @@ const IS_CONFIGURED = FIREBASE_CONFIG.apiKey !== "YOUR_API_KEY";
 // ============================================================
 let db = null;
 let storage = null;
+let functions = null;
 let currentUser = null;
 const ISRAEL_REGIONS = ['צפון', 'חיפה והקריות', 'מרכז', 'שרון', 'ירושלים והסביבה', 'שפלה', 'דרום', 'יהודה ושומרון', 'אילת והערבה'];
 let appSettings = {
@@ -1212,6 +1214,7 @@ let selectedExportProjects = new Set();
 let drawerProjectId = null;
 let _projectsPageEntries = [];
 let _projectsCommsList = null;
+let _projectStatsCache = {}; // projectId -> Promise<comms[]>, reset on each projects-page render
 let _adminProjectsEntries = [];
 let _adminProjectsCommsCounts = {};
 let _adminProjectsSort = { key: 'priority', dir: 1 };
@@ -1263,6 +1266,7 @@ function initFirebase() {
     firebase.initializeApp(FIREBASE_CONFIG);
     db = firebase.database();
     storage = firebase.storage();
+    functions = firebase.app().functions('europe-west1');
     return true;
   } catch(e) {
     console.error('Firebase init failed:', e);
@@ -1270,15 +1274,18 @@ function initFirebase() {
   }
 }
 
-// חובה לפני כל קריאה/כתיבה ל-DB: כללי האבטחה ב-Firebase דורשים auth != null,
-// וללא זה בקשות ה-REST הישירות (curl וכו') ייחסמו אך האפליקציה תמשיך לעבוד.
-async function ensureFirebaseAuth() {
-  try {
-    await firebase.auth().signInAnonymously();
-  } catch(e) {
-    console.error('Anonymous auth failed:', e);
-    throw e;
-  }
+// הסיסמא נבדקת בשרת (Cloud Function 'login') שמחזיר טוקן התחברות ל-Firebase Auth.
+// ה-uid זהה למפתח המשתמש ב-users/{uid}, וכללי ה-DB קובעים הרשאות לפי התפקיד השמור שם.
+function callFunction(name, data) {
+  return functions.httpsCallable(name)(data).then(r => r.data);
+}
+
+// טוען את המשתמש המחובר מה-DB (התפקיד נקבע בשרת, לא בדפדפן). מחזיר false אם המשתמש נמחק.
+async function loadCurrentUser(uid) {
+  const snap = await db.ref(`users/${uid}`).once('value');
+  if (!snap.exists()) { await firebase.auth().signOut(); return false; }
+  currentUser = { uid, ...snap.val() };
+  return true;
 }
 
 // ============================================================
@@ -1311,24 +1318,13 @@ async function doLogin() {
   }
 
   try {
-    // Search by username first, then by email
-    let found = null;
-    const byUsername = await db.ref('users').orderByChild('username').equalTo(username).once('value');
-    byUsername.forEach(child => {
-      if (child.val().password === password) found = { uid: child.key, ...child.val() };
-    });
-    if (!found) {
-      const byEmail = await db.ref('users').orderByChild('email').equalTo(username).once('value');
-      byEmail.forEach(child => {
-        if (child.val().password === password) found = { uid: child.key, ...child.val() };
-      });
-    }
-    if (!found) { showLoginError('שם משתמש / אימייל או סיסמא שגויים'); btn.disabled = false; btn.textContent = 'כניסה למערכת'; return; }
-    currentUser = found;
-    localStorage.setItem('hn_session', JSON.stringify({ uid: found.uid, username: found.username || found.email, displayName: found.displayName, role: found.role }));
+    const { token } = await callFunction('login', { username, password });
+    const cred = await firebase.auth().signInWithCustomToken(token);
+    if (!await loadCurrentUser(cred.user.uid)) throw new Error('המשתמש לא נמצא');
     startApp();
   } catch(e) {
-    showLoginError('שגיאת חיבור: ' + e.message);
+    const known = ['unauthenticated', 'resource-exhausted', 'invalid-argument'].some(c => (e.code || '').endsWith(c));
+    showLoginError(known ? e.message : 'שגיאת חיבור: ' + e.message);
     btn.disabled = false; btn.textContent = 'כניסה למערכת';
   }
 }
@@ -1339,7 +1335,7 @@ function showLoginError(msg) {
 }
 
 function doLogout() {
-  localStorage.removeItem('hn_session');
+  if (IS_CONFIGURED) firebase.auth().signOut();
   currentUser = null;
   if (commListener) { commListener(); commListener = null; }
   document.getElementById('app').style.display = 'none';
@@ -1357,6 +1353,8 @@ function doLogout() {
 function isBasicViewer() { return currentUser?.role === 'basic'; }
 function isReadOnlyRole() { return currentUser?.role === 'viewer' || currentUser?.role === 'basic'; }
 const BASIC_ALLOWED_PAGES = ['projects', 'project-detail', 'search'];
+// basic חסום בכללי ה-DB מקריאת commemorations וקורא עותק מצומצם (סטאטוס available/taken, בלי פרטי תופס/תורם)
+function commsPath() { return isBasicViewer() ? 'commemorationsPublic' : 'commemorations'; }
 
 async function startApp() {
   document.getElementById('login-screen').style.display = 'none';
@@ -1389,7 +1387,13 @@ async function startApp() {
       await loadSettings();
       await loadTypes();
       await loadProjects();
-      checkExpiredCaptures();
+      if (currentUser.role === 'admin' || currentUser.role === 'senior') checkExpiredCaptures().catch(e => console.warn('checkExpiredCaptures:', e.message));
+      if (currentUser.role === 'admin') {
+        migrateLegacyImages().catch(e => console.warn('migrateLegacyImages:', e.message));
+        db.ref('meta/publicCommsSynced').once('value')
+          .then(snap => { if (snap.val() !== true) return callFunction('rebuildPublicComms', {}); })
+          .catch(e => console.warn('rebuildPublicComms:', e.message));
+      }
     } catch(e) {
       document.getElementById('page-content').innerHTML =
         `<div class="empty-state"><div class="empty-icon">⚠️</div><h3>שגיאה בטעינה</h3><p style="color:var(--text-muted)">${e.message || 'בעיית חיבור לשרת'}</p><button class="btn btn-primary" onclick="location.reload()">🔄 נסה שוב</button></div>`;
@@ -1427,7 +1431,7 @@ async function loadSettings() {
     if (s.wordingReminderDays) appSettings.wordingReminderDays = s.wordingReminderDays;
     if (s.wordingReminderTemplate) appSettings.wordingReminderTemplate = s.wordingReminderTemplate;
     if (appSettings.emailjs?.publicKey) emailjs.init(appSettings.emailjs.publicKey);
-  } else {
+  } else if (currentUser.role === 'admin') {
     await db.ref('settings').set({ captureExpiryDays: appSettings.captureExpiryDays, donationSources: appSettings.donationSources, projectStages: appSettings.projectStages });
   }
 }
@@ -1439,12 +1443,6 @@ async function loadTypes() {
   } else {
     await db.ref('commemorationTypes').set(DEMO_TYPES);
     allTypes = { ...DEMO_TYPES };
-    // Seed default admin
-    const adminSnap = await db.ref('users').orderByChild('role').equalTo('admin').once('value');
-    if (!adminSnap.exists()) {
-      await db.ref('users').push({ username: 'admin', password: 'admin123', displayName: 'מנהל מערכת', role: 'admin' });
-      showToast('נוצר אדמין ברירת מחדל: admin / admin123', 'warning');
-    }
   }
 }
 
@@ -1576,7 +1574,8 @@ async function renderProjectsPage() {
   _projectsPageEntries = Object.entries(allProjects)
     .filter(([, p]) => isAdmin ? true : getProjectStatus(p) !== 'closed')
     .sort((a, b) => (b[1].createdAt || 0) - (a[1].createdAt || 0));
-  _projectsCommsList = null;
+  _projectsCommsList = IS_CONFIGURED ? null : Object.values(allComms);
+  _projectStatsCache = {};
 
   let html = IS_CONFIGURED ? '' : renderSetupBanner();
 
@@ -1600,15 +1599,6 @@ async function renderProjectsPage() {
 
   content.innerHTML = html;
   filterProjectsGrid();
-
-  // Load stats per project (more reliable than bulk load)
-  if (IS_CONFIGURED) {
-    _projectsPageEntries.forEach(([id]) => loadProjectStats(id));
-  } else {
-    _projectsCommsList = Object.values(allComms);
-    _projectsPageEntries.forEach(([id]) =>
-      updateProjectStats(id, _projectsCommsList.filter(c => c.projectId === id)));
-  }
 }
 
 function filterProjectsGrid() {
@@ -1641,7 +1631,7 @@ function filterProjectsGrid() {
 
   container.innerHTML = `<div class="projects-grid">` + entries.map(([id, p]) => renderProjectCard(id, p)).join('') + `</div>`;
 
-  // Reload stats for visible projects
+  // Fill stats for visible projects — each project is fetched once per page render, then served from cache
   if (IS_CONFIGURED) {
     entries.forEach(([id]) => loadProjectStats(id));
   } else if (_projectsCommsList !== null) {
@@ -1657,9 +1647,9 @@ function renderSetupBanner() {
       כדי להפעיל את המערכת עם שמירת נתונים אמיתית:<br>
       1. צור פרויקט חינמי ב- <strong>console.firebase.google.com</strong><br>
       2. הפעל <strong>Realtime Database</strong> (בחר אירופה)<br>
-      3. בכללי הגישה הזמניים הגדר: <code>{ "rules": { ".read": true, ".write": true } }</code><br>
-      4. עדכן את <code>FIREBASE_CONFIG</code> בקוד עם הפרטים מ-Project Settings<br>
-      5. רענן — אדמין ברירת מחדל ייווצר אוטומטית: <code>admin / admin123</code>
+      3. עדכן את <code>FIREBASE_CONFIG</code> בקוד ואת <code>.firebaserc</code> עם הפרטים מ-Project Settings<br>
+      4. פרוס חוקים ופונקציות: <code>firebase deploy --only database,functions</code><br>
+      5. צור ידנית ב-DB אדמין ראשון: <code>users/&lt;id&gt; = { username, displayName, role: "admin", password }</code> — הסיסמא תוצפן בהתחברות הראשונה
     </p>
     <p style="margin-top:10px;font-weight:600;">⚠️ כרגע: מצב הדגמה — נתונים לא נשמרים. כנס: admin/admin או user/user</p>
   </div>`;
@@ -1704,10 +1694,16 @@ function renderProjectCard(id, p) {
 }
 
 async function loadProjectStats(projectId) {
-  const snap = await db.ref('commemorations').orderByChild('projectId').equalTo(projectId).once('value');
-  const comms = [];
-  if (snap.exists()) snap.forEach(c => { comms.push(c.val()); });
-  updateProjectStats(projectId, comms);
+  if (!_projectStatsCache[projectId]) {
+    _projectStatsCache[projectId] = db.ref(commsPath()).orderByChild('projectId').equalTo(projectId).once('value')
+      .then(snap => {
+        const comms = [];
+        if (snap.exists()) snap.forEach(c => { comms.push({ status: c.val().status }); });
+        return comms;
+      })
+      .catch(e => { delete _projectStatsCache[projectId]; throw e; });
+  }
+  updateProjectStats(projectId, await _projectStatsCache[projectId]);
 }
 
 function updateProjectStats(projectId, comms) {
@@ -1775,7 +1771,7 @@ async function renderProjectDetailPage() {
     return;
   }
 
-  const ref = db.ref('commemorations').orderByChild('projectId').equalTo(currentProjectId);
+  const ref = db.ref(commsPath()).orderByChild('projectId').equalTo(currentProjectId);
   const handler = ref.on('value', snap => {
     allComms = {};
     if (snap.exists()) snap.forEach(child => { allComms[child.key] = child.val(); });
@@ -1829,7 +1825,7 @@ function renderCommsGrid() {
   }
 
   items.sort((a,b) => {
-    const order = { available: 0, captured: 1, sold: 2 };
+    const order = { available: 0, captured: 1, taken: 1, sold: 2 };
     if (a[1].isWholeProject && !b[1].isWholeProject) return -1;
     if (!a[1].isWholeProject && b[1].isWholeProject) return 1;
     const statusDiff = (order[a[1].status] || 0) - (order[b[1].status] || 0);
@@ -1845,8 +1841,8 @@ function renderCommsGrid() {
 
 function renderCommCard(id, c, blockedByWhole) {
   const type = allTypes[c.typeId]?.name || (c.isWholeProject ? 'כל הפרויקט' : '');
-  const statusLabels = { available: 'פנויה', captured: 'תפוסה', sold: 'נמכרה' };
-  const badgeClasses = { available: 'badge-available', captured: 'badge-captured', sold: 'badge-sold' };
+  const statusLabels = { available: 'פנויה', captured: 'תפוסה', sold: 'נמכרה', taken: 'לא פנויה' };
+  const badgeClasses = { available: 'badge-available', captured: 'badge-captured', sold: 'badge-sold', taken: 'badge-captured' };
   const project = allProjects[currentProjectId];
   const pStatus = getProjectStatus(project || {});
   const isProjectActive = pStatus === 'active' || pStatus === 'completion';
@@ -1959,7 +1955,11 @@ async function confirmCapture() {
   try {
     let success = false;
     const capturedAt = Date.now();
-    await db.ref(`commemorations/${commId}`).transaction(current => {
+    const commRef = db.ref(`commemorations/${commId}`);
+    const keepCached = () => {};
+    commRef.on('value', keepCached);
+    await commRef.once('value');
+    await commRef.transaction(current => {
       // current===null means Firebase has no local cache (no active listener on this node).
       // Returning null (not undefined) tells Firebase to conflict-check with the server,
       // which triggers a retry with the real server value.
@@ -1967,7 +1967,7 @@ async function confirmCapture() {
       if (current.status !== 'available') return;
       success = true;
       return { ...current, status: 'captured', capturedBy: currentUser.uid, capturedByName: currentUser.displayName, capturedAt, captureExpiry, capturedDonorName, captureSource, captureOperatorName, captureNote, captureExpiredAt: null };
-    });
+    }).finally(() => commRef.off('value', keepCached));
     if (success) {
       const c = allComms[commId] || {};
       await db.ref('captureLog').push({
@@ -2235,8 +2235,8 @@ function openCommDetail(commId) {
     // Image section
     html += `<hr class="divider">
       <div style="font-size:13px;font-weight:700;color:var(--primary-dark);margin-bottom:8px;">🖼️ תמונת הנצחה</div>`;
-    if (c.imageUrl) {
-      html += `<img src="${esc(c.imageUrl)}" class="image-preview" alt="תמונת הנצחה">
+    if (commHasImage(c)) {
+      html += `<img id="comm-img-${commId}" class="image-preview" alt="תמונת הנצחה">
         ${isAdmin ? `<div style="display:flex;gap:8px;margin-top:8px;">
           <button class="btn btn-ghost btn-sm" onclick="sendDonorEmail('${commId}')">📧 שלח מייל לתורם</button>
           <button class="btn btn-danger btn-sm" onclick="deleteCommImage('${commId}')">🗑️ מחק תמונה</button>
@@ -2254,10 +2254,12 @@ function openCommDetail(commId) {
 
   document.getElementById('detail-title').textContent = c.name;
   document.getElementById('detail-content').innerHTML = html;
+  if (commHasImage(c)) fillCommImage(commId, c);
 
   const isViewer = isReadOnlyRole();
   let actionsHtml = `<button class="btn btn-ghost" onclick="closeModal('modal-comm-detail')">סגור</button>`;
-  if (!isViewer && (c.status === 'sold' || c.status === 'captured')) {
+  const canEditDetails = isAdmin || (c.status === 'captured' ? c.capturedBy === currentUser.uid : c.soldBy === currentUser.uid);
+  if (!isViewer && canEditDetails && (c.status === 'sold' || c.status === 'captured')) {
     actionsHtml = `<button class="btn btn-primary btn-sm" onclick="openEditSold('${commId}')">✏️ ערוך פרטים</button>` + actionsHtml;
   }
   if (isAdmin && c.status !== 'available') {
@@ -2381,6 +2383,41 @@ async function adminUpdateCommChecklist(commId, field, value) {
   showToast(value ? '✅ עודכן' : '✓ בוטל', 'success');
 }
 
+// התמונות נשמרות ב-commemorationImages/{commId} ולא בתוך ההנצחה, כדי ששאילתות על רשימות הנצחות
+// לא יורידו אותן. בהנצחה נשמר רק hasImage. imageUrl בתוך ההנצחה = פורמט ישן שטרם הועבר.
+function commHasImage(c) { return !!(c && (c.hasImage || c.imageUrl)); }
+
+async function getCommImage(commId, c) {
+  if (c?.imageUrl) return c.imageUrl;
+  if (!IS_CONFIGURED) return null;
+  return (await db.ref(`commemorationImages/${commId}`).once('value')).val();
+}
+
+// ממלא <img id="comm-img-{commId}"> שכבר הוצג בחלון הפרטים
+async function fillCommImage(commId, c) {
+  const el = document.getElementById(`comm-img-${commId}`);
+  if (!el) return;
+  const src = await getCommImage(commId, c).catch(() => null);
+  if (src) el.src = src; else el.remove();
+}
+
+// העברה חד-פעמית של תמונות מהפורמט הישן. רצה אצל אדמין, ומסמנת meta/imagesMigrated בסיום.
+async function migrateLegacyImages() {
+  if ((await db.ref('meta/imagesMigrated').once('value')).val() === true) return;
+  const snap = await db.ref('commemorations').once('value');
+  const legacy = [];
+  snap.forEach(child => { if (child.val().imageUrl) legacy.push([child.key, child.val().imageUrl]); });
+  // כתיבה נפרדת לכל הנצחה — כתיבה אחת של כל התמונות עלולה לחרוג ממגבלת הגודל של Firebase
+  for (const [id, url] of legacy) {
+    await db.ref().update({
+      [`commemorationImages/${id}`]: url,
+      [`commemorations/${id}/hasImage`]: true,
+      [`commemorations/${id}/imageUrl`]: null,
+    });
+  }
+  await db.ref('meta/imagesMigrated').set(true);
+}
+
 async function uploadCommImage(commId, input) {
   const file = input.files[0];
   if (!file) return;
@@ -2395,9 +2432,10 @@ async function uploadCommImage(commId, input) {
       reader.readAsDataURL(file);
     });
     if (IS_CONFIGURED) {
-      await db.ref(`commemorations/${commId}`).update({ imageUrl: base64url });
+      await db.ref(`commemorationImages/${commId}`).set(base64url);
+      await db.ref(`commemorations/${commId}`).update({ hasImage: true, imageUrl: null });
     }
-    if (allComms[commId]) allComms[commId].imageUrl = base64url;
+    if (allComms[commId]) Object.assign(allComms[commId], IS_CONFIGURED ? { hasImage: true, imageUrl: null } : { imageUrl: base64url });
     showToast('התמונה נשמרה בהצלחה ✅', 'success');
     openCommDetail(commId);
   } catch(e) {
@@ -2409,9 +2447,10 @@ async function deleteCommImage(commId) {
   if (!confirm('למחוק את תמונת ההנצחה?')) return;
   try {
     if (IS_CONFIGURED) {
-      await db.ref(`commemorations/${commId}`).update({ imageUrl: null });
+      await db.ref(`commemorations/${commId}`).update({ hasImage: null, imageUrl: null });
+      await db.ref(`commemorationImages/${commId}`).remove();
     }
-    if (allComms[commId]) allComms[commId].imageUrl = null;
+    if (allComms[commId]) Object.assign(allComms[commId], { hasImage: null, imageUrl: null });
     showToast('התמונה נמחקה', 'success');
     openCommDetail(commId);
   } catch(e) {
@@ -2426,7 +2465,6 @@ function sendDonorEmail(commId) {
   const body = encodeURIComponent(
     'שלום ' + (c.donorName||'') + ',\n\nתודה על תרומתך.\nפרטי ההנצחה:\nשם: ' + c.name +
     '\nשמות להנצחה: ' + (c.commemorationNames||'-') +
-    (c.imageUrl ? '\n\nתמונת ההנצחה:\n' + c.imageUrl : '') +
     '\n\nבברכה,\nצוות טהרת המשפחה'
   );
   window.open('mailto:' + c.donorEmail + '?subject=' + subject + '&body=' + body);
@@ -2847,14 +2885,15 @@ function openSoldReportDetail(commId) {
 
   html += `<hr class="divider">
     <div style="font-size:13px;font-weight:700;color:var(--primary-dark);margin-bottom:8px;">🖼️ תמונת הנצחה</div>`;
-  if (c.imageUrl) {
-    html += `<img src="${esc(c.imageUrl)}" class="image-preview" alt="תמונת הנצחה">`;
+  if (commHasImage(c)) {
+    html += `<img id="comm-img-${commId}" class="image-preview" alt="תמונת הנצחה">`;
   } else {
     html += `<div style="color:var(--text-muted);font-size:13px;margin-bottom:8px;">אין תמונה עדיין</div>`;
   }
 
   document.getElementById('detail-title').textContent = item.commName;
   document.getElementById('detail-content').innerHTML = html;
+  if (commHasImage(c)) fillCommImage(commId, c);
   document.getElementById('detail-actions').innerHTML = `<button class="btn btn-ghost" onclick="closeModal('modal-comm-detail')">סגור</button>`;
   openModal('modal-comm-detail');
 }
@@ -3018,7 +3057,7 @@ async function renderSignsPage() {
       };
       const notApproved = !c.approvalChecked;
       const notPrinted  = !c.signPrinted;
-      const imgIcon = c.imageUrl
+      const imgIcon = commHasImage(c)
         ? `<span title="יש קובץ מצורף — לחץ לצפייה" style="cursor:pointer;font-size:15px;margin-right:5px;vertical-align:middle;" onclick="event.stopPropagation();signsViewImage('${id}')">🖼️</span>`
         : '';
       const hungTag = c.signHung ? '<span style="font-size:10px;background:#E8F5E9;color:#2E7D32;border-radius:4px;padding:1px 5px;margin-right:4px;">✓ תלוי</span>' : '';
@@ -3088,12 +3127,13 @@ function signsOpenDetail(commId) {
   openCommDetail(commId);
 }
 
-function signsViewImage(commId) {
+async function signsViewImage(commId) {
   const c = (window._signsComms || {})[commId] || allComms[commId];
-  if (!c || !c.imageUrl) { showToast('אין קובץ מצורף', 'error'); return; }
+  const src = commHasImage(c) ? await getCommImage(commId, c) : null;
+  if (!src) { showToast('אין קובץ מצורף', 'error'); return; }
   const overlay = document.createElement('div');
   overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.82);z-index:999;display:flex;align-items:center;justify-content:center;cursor:zoom-out;';
-  overlay.innerHTML = `<img src="${esc(c.imageUrl)}" style="max-width:90vw;max-height:90vh;border-radius:12px;box-shadow:0 8px 40px rgba(0,0,0,0.6);" alt="תמונת הנצחה">
+  overlay.innerHTML = `<img src="${esc(src)}" style="max-width:90vw;max-height:90vh;border-radius:12px;box-shadow:0 8px 40px rgba(0,0,0,0.6);" alt="תמונת הנצחה">
     <div style="position:absolute;top:18px;left:18px;background:white;border-radius:8px;padding:6px 14px;font-size:13px;font-weight:700;color:var(--primary-dark);cursor:pointer;" onclick="event.stopPropagation();this.parentElement.remove()">✕ סגור</div>`;
   overlay.addEventListener('click', () => overlay.remove());
   document.body.appendChild(overlay);
@@ -3987,6 +4027,7 @@ async function deleteComm(commId) {
   if (!confirm('למחוק הנצחה זו לצמיתות?')) return;
   if (!IS_CONFIGURED) { delete allComms[commId]; renderAdminProjectCommsPage(); return; }
   await db.ref(`commemorations/${commId}`).remove();
+  await db.ref(`commemorationImages/${commId}`).remove();
   delete allComms[commId];
   renderAdminProjectCommsPage();
   showToast('ההנצחה נמחקה', 'success');
@@ -4088,10 +4129,9 @@ async function saveUser() {
 
   if (!IS_CONFIGURED) { closeModal('modal-user'); showToast('מצב הדגמה — לא נשמר', 'warning'); return; }
 
-  const data = { displayName, username, role };
-  if (password) data.password = password;
-  if (editingUserId) await db.ref(`users/${editingUserId}`).update(data);
-  else await db.ref('users').push(data);
+  try {
+    await callFunction('saveUser', { id: editingUserId, displayName, username, role, password });
+  } catch(e) { showToast(e.message, 'error'); return; }
   closeModal('modal-user');
   renderAdminUsersPage();
   showToast('המשתמש נשמר', 'success');
@@ -4101,7 +4141,9 @@ async function deleteUser(id) {
   if (id === currentUser.uid) { showToast('לא ניתן למחוק את עצמך', 'error'); return; }
   if (!confirm('למחוק משתמש זה?')) return;
   if (!IS_CONFIGURED) return;
-  await db.ref(`users/${id}`).remove();
+  try {
+    await callFunction('deleteUser', { id });
+  } catch(e) { showToast(e.message, 'error'); return; }
   renderAdminUsersPage();
   showToast('המשתמש נמחק', 'success');
 }
@@ -4656,7 +4698,7 @@ async function runSearch() {
   if (!IS_CONFIGURED) {
     commsEntries = Object.entries(allComms);
   } else {
-    const snap = await db.ref('commemorations').once('value');
+    const snap = await db.ref(commsPath()).once('value');
     if (snap.exists()) snap.forEach(child => {
       commsEntries.push([child.key, child.val()]);
       allComms[child.key] = child.val();
@@ -4787,14 +4829,19 @@ async function toggleMikvehPanel(projectId) {
     return;
   }
 
-  let totalComms = 0, soldComms = 0;
+  let totalComms = 0, soldComms = 0, availableComms = 0;
   if (!IS_CONFIGURED) {
     const projectComms = Object.values(allComms).filter(c => c.projectId === projectId);
     totalComms = projectComms.length;
     soldComms = projectComms.filter(c => c.status === 'sold').length;
+    availableComms = projectComms.filter(c => c.status === 'available').length;
   } else {
-    const snap = await db.ref('commemorations').orderByChild('projectId').equalTo(projectId).once('value');
-    if (snap.exists()) snap.forEach(child => { totalComms++; if (child.val().status === 'sold') soldComms++; });
+    const snap = await db.ref(commsPath()).orderByChild('projectId').equalTo(projectId).once('value');
+    if (snap.exists()) snap.forEach(child => {
+      totalComms++;
+      if (child.val().status === 'sold') soldComms++;
+      if (child.val().status === 'available') availableComms++;
+    });
   }
 
   const project = allProjects[projectId];
@@ -4810,7 +4857,9 @@ async function toggleMikvehPanel(projectId) {
       ${project.notes ? `<div class="info-row"><span class="info-label">הערות:</span><span>${esc(project.notes)}</span></div>` : ''}
       <div class="info-row"><span class="info-label">סטאטוס:</span><span class="tag ${project.isActive?'tag-success':'tag-warning'}">${project.isActive?'פעיל':'סגור'}</span></div>
       <div class="info-row"><span class="info-label">עדיפות:</span><span class="priority-badge priority-${priority}">${priority}</span></div>
-      <div class="info-row"><span class="info-label">הנצחות:</span><span><strong>${soldComms}</strong> נמכרו מתוך <strong>${totalComms}</strong></span></div>
+      <div class="info-row"><span class="info-label">הנצחות:</span><span>${isBasicViewer()
+        ? `<strong>${availableComms}</strong> פנויות מתוך <strong>${totalComms}</strong>`
+        : `<strong>${soldComms}</strong> נמכרו מתוך <strong>${totalComms}</strong>`}</span></div>
     </div>`;
 
   panelDivs.forEach(el => { el.innerHTML = panelHtml; el.style.display = 'block'; });
@@ -5014,67 +5063,24 @@ document.querySelectorAll('.modal-backdrop').forEach(el => {
 });
 
 // ============================================================
-//  FIRST RUN SEED
-// ============================================================
-async function seedIfNeeded() {
-  try {
-    const usersSnap = await db.ref('users').once('value');
-    if (!usersSnap.exists()) {
-      const defaultTypes = {
-        t1:{name:'הנצחה ראשית ושם המקווה',isDefault:true},
-        t2:{name:'חדר בית הטבילה',isDefault:true},
-        t3:{name:'חדר כלה',isDefault:true},
-        t4:{name:'חדר הכנה',isDefault:true},
-        t5:{name:'מאגר מי גשם',isDefault:true},
-        t6:{name:'אוצר השקה',isDefault:true},
-        t7:{name:'אוצר זריעה',isDefault:true},
-        t8:{name:'מערכת חימום',isDefault:true},
-        t9:{name:'תאורה',isDefault:true},
-        t10:{name:'ריהוט מקווה',isDefault:true},
-        t11:{name:'כיור- ברכת הטבילה',isDefault:true},
-        t12:{name:'כיור- ברכת אשר יצר',isDefault:true},
-        t13:{name:'הנצחה על שלט- תחינה לפני טבילה',isDefault:true},
-        t14:{name:'הנצחה על שלט- תחינה אחרי טבילה',isDefault:true},
-        t15:{name:'הנצחה על שלט- תפילה על הילדים',isDefault:true},
-        t16:{name:'הנצחה על שלט- סדר הכנות',isDefault:true}
-      };
-      await db.ref('commemorationTypes').set(defaultTypes);
-      await db.ref('settings').set(appSettings);
-      await db.ref('users').push({ username:'admin', password:'admin123', displayName:'מנהל מערכת', role:'admin' });
-      console.log('Seeded default data');
-    }
-  } catch(e) {
-    console.warn('Seed failed (check Firebase Rules):', e.message);
-  }
-}
-
-// ============================================================
 //  INIT
 // ============================================================
 (async function init() {
   const ok = initFirebase();
 
+  // Restore session — Firebase Auth keeps the login; the role is re-read from the DB
+  localStorage.removeItem('hn_session'); // legacy client-side session, no longer trusted
   if (ok) {
     try {
-      await ensureFirebaseAuth();
+      const user = await new Promise(resolve => {
+        const unsub = firebase.auth().onAuthStateChanged(u => { unsub(); resolve(u); });
+      });
+      if (user && user.isAnonymous) await firebase.auth().signOut();
+      else if (user && await loadCurrentUser(user.uid)) { startApp(); return; }
     } catch(e) {
-      document.getElementById('login-screen').style.display = 'flex';
-      showLoginError('שגיאת חיבור למסד הנתונים: ' + e.message);
-      return;
+      console.warn('Session restore failed:', e.message);
     }
   }
-
-  // Restore session
-  const sessionStr = localStorage.getItem('hn_session');
-  if (sessionStr && ok) {
-    try {
-      currentUser = JSON.parse(sessionStr);
-      startApp();
-      return;
-    } catch(e) { localStorage.removeItem('hn_session'); }
-  }
-
-  if (ok) await seedIfNeeded();
 
   document.getElementById('login-screen').style.display = 'flex';
 })();
