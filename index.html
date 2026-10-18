@@ -1860,7 +1860,9 @@ function renderCommCard(id, c, blockedByWhole) {
   } else if (c.status === 'captured') {
     meta = `<div class="comm-meta">תפוס: <strong>${esc(c.capturedByName||'')}</strong></div>`;
   } else if (c.status === 'sold') {
-    meta = `<div class="comm-meta">תורם: <strong>${esc(c.donorName||'')}</strong></div>`;
+    const fundraiser = [c.fundraiserName || c.donationSource, c.secondaryFundraiser].filter(Boolean).join(' - ');
+    meta = `<div class="comm-meta">תורם: <strong>${esc(c.donorName||'')}</strong></div>` +
+      (fundraiser ? `<div class="comm-meta">מתרים: <strong>${esc(fundraiser)}</strong></div>` : '');
   } else if (isBlocked) {
     meta = `<div class="comm-meta" style="color:var(--text-muted);">חסומה</div>`;
   }
