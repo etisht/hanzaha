@@ -637,6 +637,10 @@
         <div class="nav-item" onclick="showPage('signs-management')" data-page="signs-management">
           <span class="nav-icon">🪧</span> ניהול שלטים
         </div>
+        <div class="nav-item" onclick="showPage('signs-completion')" data-page="signs-completion">
+          <span class="nav-icon">🖨️</span> השלמת הנצחות
+          <span id="nav-signs-completion-badge" style="display:none;background:var(--accent);color:white;border-radius:10px;font-size:11px;font-weight:700;padding:1px 7px;margin-right:auto;"></span>
+        </div>
         <div class="nav-item" onclick="showPage('admin-expired')" data-page="admin-expired" id="nav-expired">
           <span class="nav-icon">⚠️</span> לטיפול
           <span id="nav-expired-badge" style="display:none;background:var(--danger);color:white;border-radius:10px;font-size:11px;font-weight:700;padding:1px 7px;margin-right:auto;"></span>
@@ -1178,6 +1182,7 @@
 
 <!-- Firebase SDK v9 compat -->
 <script src="https://cdn.jsdelivr.net/npm/@emailjs/browser@4/dist/email.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-auth-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-database-compat.js"></script>
@@ -1218,6 +1223,7 @@ let appSettings = {
   emailjs: { serviceId: '', templateId: '', publicKey: '' },
   sourceEmails: {},
   wordingReminderDays: 14,
+  signsNotifyEmail: 'taharat@taharat.org',
   wordingReminderTemplate: 'שלום,\n\nהנצחה "{{comm_name}}" בפרויקט {{project_name}} נרכשה ב-{{sale_date}} ועדיין אין נוסח להנצחה.\n\nאנא עדכנו את הנוסח במערכת.\n\nתודה'
 };
 let allTypes = {};
@@ -1410,6 +1416,7 @@ async function startApp() {
       await loadTypes();
       await loadProjects();
       if (currentUser.role === 'admin' || currentUser.role === 'senior') checkExpiredCaptures().catch(e => console.warn('checkExpiredCaptures:', e.message));
+      if (currentUser.role === 'admin' || currentUser.role === 'senior') refreshSignsCompletionBadge().catch(e => console.warn('refreshSignsCompletionBadge:', e.message));
       if (currentUser.role === 'admin') {
         migrateLegacyImages().catch(e => console.warn('migrateLegacyImages:', e.message));
         db.ref('meta/publicCommsSynced').once('value')
@@ -1452,6 +1459,7 @@ async function loadSettings() {
     if (s.sourceEmails) appSettings.sourceEmails = s.sourceEmails;
     if (s.wordingReminderDays) appSettings.wordingReminderDays = s.wordingReminderDays;
     if (s.wordingReminderTemplate) appSettings.wordingReminderTemplate = s.wordingReminderTemplate;
+    if (s.signsNotifyEmail) appSettings.signsNotifyEmail = s.signsNotifyEmail;
     if (appSettings.emailjs?.publicKey) emailjs.init(appSettings.emailjs.publicKey);
   } else if (currentUser.role === 'admin') {
     await db.ref('settings').set({ captureExpiryDays: appSettings.captureExpiryDays, donationSources: appSettings.donationSources, projectStages: appSettings.projectStages });
@@ -1574,6 +1582,7 @@ function showPage(page, projectId) {
     'sold-report': renderSoldReportPage,
     'unassigned-report': renderUnassignedReportPage,
     'signs-management': renderSignsPage,
+    'signs-completion': renderSignsCompletionPage,
     'export-excel': renderExportExcelPage,
     'about': renderAboutPage,
     'search': renderSearchPage
@@ -2186,6 +2195,7 @@ async function confirmSell() {
       soldBy: currentUser.uid, soldByName: currentUser.displayName,
       soldAt, price: current.price || 0, directSell: isDirectSell
     });
+    notifySignAfterPrint(current, soldData).catch(e => console.warn('notifySignAfterPrint:', e.message));
     closeModal('modal-sell');
     pendingSellId = null;
     pendingDirectSell = false;
@@ -3249,6 +3259,237 @@ async function signsUpdateField(commId, field, value, refreshTable) {
 }
 
 // ============================================================
+//  SIGNS COMPLETION — שלטים שנמכרו אחרי שהודפסו שלטי הפרויקט
+// ============================================================
+const isSignsCompletionItem = c => c.status === 'sold' && !c.signPrinted && !!allProjects[c.projectId]?.signsPrinted;
+
+async function markProjectSignsPrinted(projectId, value) {
+  if (currentUser.role !== 'admin' && currentUser.role !== 'senior') return;
+  const p = allProjects[projectId];
+  if (!p) return;
+  const by = currentUser.displayName || currentUser.username || '';
+  const now = Date.now();
+  const updates = {};
+  let count = 0;
+  if (value) {
+    let comms = {};
+    if (IS_CONFIGURED) {
+      const snap = await db.ref('commemorations').orderByChild('projectId').equalTo(projectId).once('value');
+      if (snap.exists()) snap.forEach(c => { comms[c.key] = c.val(); });
+    } else {
+      Object.entries(allComms).forEach(([id,c]) => { if (c.projectId === projectId) comms[id] = c; });
+    }
+    Object.entries(comms).forEach(([id,c]) => {
+      if (c.status !== 'sold' || c.signPrinted) return;
+      updates[`commemorations/${id}/signPrinted`] = true;
+      updates[`commemorations/${id}/signPrintedAt`] = now;
+      updates[`commemorations/${id}/signPrintedBy`] = by;
+      count++;
+    });
+    if (!confirm(`לסמן שהודפסו השלטים בפרויקט "${p.name}"?\n${count} הנצחות שנמכרו יסומנו כ"הודפס".\nמעכשיו, כל הנצחה שתימכר בפרויקט תישלח במייל ותופיע בדוח השלמת הנצחות.`)) return;
+  } else if (!confirm(`לבטל את סימון "הודפסו השלטים" בפרויקט "${p.name}"?\nמכירות חדשות לא יופיעו בדוח השלמת הנצחות.`)) return;
+
+  const flags = value
+    ? { signsPrinted: true, signsPrintedAt: now, signsPrintedBy: by }
+    : { signsPrinted: null, signsPrintedAt: null, signsPrintedBy: null };
+  Object.entries(flags).forEach(([k,v]) => { updates[`projects/${projectId}/${k}`] = v; });
+
+  try {
+    if (IS_CONFIGURED) await db.ref().update(updates);
+    Object.assign(p, flags);
+    Object.entries(updates).forEach(([path, v]) => {
+      const [root, id, field] = path.split('/');
+      if (root === 'commemorations' && allComms[id]) allComms[id][field] = v;
+    });
+    showToast(value ? `✅ סומן — ${count} שלטים סומנו כמודפסים` : '✓ הסימון בוטל', 'success');
+    if (drawerProjectId === projectId) openProjectDrawer(projectId);
+    if (currentPage === 'admin-projects') renderAdminProjectsTable();
+    refreshSignsCompletionBadge().catch(() => {});
+  } catch(e) {
+    showToast('שגיאה: ' + e.message, 'error');
+  }
+}
+
+async function notifySignAfterPrint(comm, soldData) {
+  let proj = allProjects[comm.projectId];
+  if (IS_CONFIGURED && comm.projectId) {
+    const snap = await db.ref(`projects/${comm.projectId}`).once('value');
+    if (snap.exists()) proj = snap.val();
+  }
+  if (!proj?.signsPrinted) return;
+  const { serviceId, templateId, publicKey } = appSettings.emailjs || {};
+  const toEmail = appSettings.signsNotifyEmail || 'taharat@taharat.org';
+  if (!serviceId || !templateId || !publicKey) { console.warn('notifySignAfterPrint: EmailJS לא מוגדר'); return; }
+  emailjs.init(publicKey);
+  const message = [
+    'שלום,',
+    '',
+    `נמכרה הנצחה חדשה בפרויקט "${proj.name || ''}", שהשלטים שלו כבר הודפסו.`,
+    '',
+    `הפריט: ${comm.name || ''}`,
+    `נוסח ההנצחה: ${soldData.commemorationNames || (soldData.wordingPending ? 'נוסח יימסר בהמשך' : '-')}`,
+    `שם התורם: ${soldData.donorName || ''}`,
+    `נמכר ע"י: ${soldData.soldByName || ''}`,
+    `תאריך מכירה: ${new Date(soldData.soldAt).toLocaleDateString('he-IL')}`,
+    '',
+    'ההנצחה מופיעה בדוח "השלמת הנצחות" במערכת עד שיסומן שהשלט הודפס.'
+  ].join('\n');
+  await emailjs.send(serviceId, templateId, {
+    to_email: toEmail,
+    subject: `שלט נוסף נמכר בפרויקט שהודפס: ${proj.name || ''}`,
+    message
+  });
+}
+
+async function refreshSignsCompletionBadge(knownCount) {
+  const badge = document.getElementById('nav-signs-completion-badge');
+  if (!badge) return;
+  let count = knownCount;
+  if (count === undefined) {
+    if (!IS_CONFIGURED) return;
+    if (!Object.values(allProjects).some(p => p.signsPrinted)) { count = 0; }
+    else {
+      const snap = await db.ref('commemorations').orderByChild('status').equalTo('sold').once('value');
+      count = 0;
+      if (snap.exists()) snap.forEach(c => { if (isSignsCompletionItem(c.val())) count++; });
+    }
+  }
+  badge.textContent = count;
+  badge.style.display = count > 0 ? '' : 'none';
+}
+
+async function renderSignsCompletionPage() {
+  if (currentUser.role !== 'admin' && currentUser.role !== 'senior') { showPage('projects'); return; }
+  setTopbar('השלמת הנצחות', '');
+  const content = document.getElementById('page-content');
+  content.innerHTML = '<div class="empty-state"><div class="empty-icon">⏳</div><h3>טוען...</h3></div>';
+
+  if (IS_CONFIGURED) await loadProjects();
+  let comms = {};
+  if (IS_CONFIGURED) {
+    const snap = await db.ref('commemorations').orderByChild('status').equalTo('sold').once('value');
+    if (snap.exists()) snap.forEach(c => { comms[c.key] = c.val(); });
+  } else {
+    comms = Object.assign({}, allComms);
+  }
+  Object.assign(allComms, comms);
+  window._signsComms = Object.assign(window._signsComms || {}, comms);
+
+  content.innerHTML = `
+    <p style="color:var(--text-muted);font-size:13px;margin-bottom:14px;">
+      הנצחות שנמכרו בפרויקטים שסומנו "הודפסו השלטים", ושהשלט שלהן עדיין לא הודפס. סימון "הודפס" מוריד את השורה מהדוח.
+    </p>
+    <div class="filters-bar" style="margin-bottom:20px;flex-wrap:wrap;gap:12px;align-items:center;">
+      <span class="filter-label">חיפוש מקווה:</span>
+      <input class="filter-select" id="sc-project-search" placeholder="הקלד שם מקווה..." style="min-width:160px;" oninput="signsCompletionRenderTable()">
+      <button class="btn btn-primary btn-sm" onclick="signsCompletionMarkAll()" style="margin-right:auto;">✅ סמן הכל כהודפס</button>
+      <button class="btn btn-accent btn-sm" onclick="signsCompletionExport()">📥 ייצוא לאקסל</button>
+    </div>
+    <div id="sc-table-container"></div>`;
+  signsCompletionRenderTable();
+}
+
+function getSignsCompletionItems() {
+  const search = (document.getElementById('sc-project-search')?.value || '').trim().toLowerCase();
+  return Object.entries(window._signsComms || {})
+    .filter(([,c]) => isSignsCompletionItem(c))
+    .filter(([,c]) => !search || (allProjects[c.projectId]?.name || '').toLowerCase().includes(search))
+    .sort(([,a],[,b]) => (allProjects[a.projectId]?.name || '').localeCompare(allProjects[b.projectId]?.name || '', 'he') || (a.soldAt||0) - (b.soldAt||0));
+}
+
+function signsCompletionRenderTable() {
+  const container = document.getElementById('sc-table-container');
+  if (!container) return;
+  const items = getSignsCompletionItems();
+  if (!document.getElementById('sc-project-search')?.value) refreshSignsCompletionBadge(items.length);
+  if (!items.length) { container.innerHTML = '<div class="empty-state"><div class="empty-icon">✅</div><h3>אין שלטים להשלמה</h3></div>'; return; }
+  const rows = items.map(([id,c]) => {
+    const imgIcon = commHasImage(c)
+      ? `<span title="יש קובץ מצורף — לחץ לצפייה" style="cursor:pointer;font-size:15px;margin-right:5px;vertical-align:middle;" onclick="event.stopPropagation();signsViewImage('${id}')">🖼️</span>`
+      : '';
+    const wording = c.commemorationNames
+      ? esc(c.commemorationNames)
+      : (c.wordingPending ? '<span class="tag tag-warning">⏳ נוסח יימסר בהמשך</span>' : '-');
+    return `<tr style="cursor:pointer;" title="לחץ לפרטים מלאים" onclick="signsOpenDetail('${id}')">
+      <td style="font-size:12px;font-weight:700;color:var(--primary-dark);">${esc(allProjects[c.projectId]?.name||'')}</td>
+      <td style="font-size:12px;">${c.soldAt ? new Date(c.soldAt).toLocaleDateString('he-IL') : '-'}</td>
+      <td><strong style="color:var(--primary);">${esc(c.name)}</strong>${imgIcon}</td>
+      <td style="font-size:13px;">${esc(c.donorName||'-')}</td>
+      <td style="font-size:12px;">${esc(c.soldByName||'-')}</td>
+      <td style="font-size:12px;">${wording}</td>
+      <td style="text-align:center;" onclick="event.stopPropagation()">
+        <input type="checkbox" style="width:18px;height:18px;accent-color:var(--primary);cursor:pointer;" title="הודפס"
+          onchange="signsCompletionMark('${id}')">
+      </td>
+    </tr>`;
+  }).join('');
+  container.innerHTML = `<div class="stats-row" style="margin-bottom:16px;">
+      <div class="stat-chip"><span class="stat-icon" style="color:var(--accent)">🖨️</span><div><div class="stat-num" style="color:var(--accent)">${items.length}</div><div class="stat-lbl">שלטים להדפסה</div></div></div>
+    </div>
+    <div class="table-wrap">
+      <table class="data-table">
+        <thead><tr>
+          <th>שם הפרויקט</th><th>תאריך מכירה</th><th>הפריט</th><th>שם התורם</th><th>מי מכר</th><th>נוסח הנצחה</th>
+          <th style="text-align:center;">✅ הודפס</th>
+        </tr></thead>
+        <tbody>${rows}</tbody>
+      </table>
+    </div>`;
+}
+
+async function signsCompletionMark(commId) {
+  await signsUpdateField(commId, 'signPrinted', true, false);
+  signsCompletionRenderTable();
+}
+
+async function signsCompletionMarkAll() {
+  const items = getSignsCompletionItems();
+  if (!items.length) return;
+  if (!confirm(`לסמן ${items.length} שלטים כמודפסים?`)) return;
+  const now = Date.now();
+  const by = currentUser.displayName || currentUser.username || '';
+  const updates = {};
+  items.forEach(([id]) => {
+    updates[`commemorations/${id}/signPrinted`] = true;
+    updates[`commemorations/${id}/signPrintedAt`] = now;
+    updates[`commemorations/${id}/signPrintedBy`] = by;
+  });
+  try {
+    if (IS_CONFIGURED) await db.ref().update(updates);
+    items.forEach(([id]) => {
+      const fields = { signPrinted: true, signPrintedAt: now, signPrintedBy: by };
+      if (window._signsComms[id]) Object.assign(window._signsComms[id], fields);
+      if (allComms[id]) Object.assign(allComms[id], fields);
+    });
+    showToast(`✅ ${items.length} שלטים סומנו כמודפסים`, 'success');
+    signsCompletionRenderTable();
+  } catch(e) {
+    showToast('שגיאה: ' + e.message, 'error');
+  }
+}
+
+function signsCompletionExport() {
+  if (typeof XLSX === 'undefined') { showToast('ספריית Excel לא נטענה', 'error'); return; }
+  const items = getSignsCompletionItems();
+  if (!items.length) { showToast('אין נתונים לייצוא', 'warning'); return; }
+  const rows = items.map(([,c]) => ({
+    'פרויקט':        allProjects[c.projectId]?.name || '',
+    'הפריט':         c.name || '',
+    'סוג':           allTypes[c.typeId]?.name || '',
+    'נוסח הנצחה':   c.commemorationNames || (c.wordingPending ? 'נוסח יימסר בהמשך' : ''),
+    'שם תורם':      c.donorName || '',
+    'מספר תורם':    c.donorNumber || '',
+    'נמכר ע"י':     c.soldByName || '',
+    'תאריך מכירה':  c.soldAt ? new Date(c.soldAt).toLocaleDateString('he-IL') : ''
+  }));
+  const ws = XLSX.utils.json_to_sheet(rows);
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, 'השלמת הנצחות');
+  XLSX.writeFile(wb, `השלמת_הנצחות_${new Date().toLocaleDateString('he-IL').replace(/\./g,'-')}.xlsx`);
+  showToast('הקובץ הורד בהצלחה', 'success');
+}
+
+// ============================================================
 //  EXPORT EXCEL PAGE
 // ============================================================
 async function renderExportExcelPage() {
@@ -3467,7 +3708,15 @@ function renderDrawerView() {
   `;
 
   const isAdminUser = currentUser.role === 'admin';
+  const canMarkSigns = isAdminUser || currentUser.role === 'senior';
+  const signsPrintedHtml = !canMarkSigns ? '' : p.signsPrinted
+    ? `<div style="width:100%;display:flex;align-items:center;gap:8px;background:#FFF3E0;border-radius:8px;padding:8px 12px;margin-bottom:8px;font-size:13px;">
+        <span>🖨️ <strong>שלטי הפרויקט הודפסו</strong> · ${p.signsPrintedAt ? new Date(p.signsPrintedAt).toLocaleDateString('he-IL') : ''} · ${esc(p.signsPrintedBy||'')}</span>
+        <button class="btn btn-ghost btn-sm" style="margin-right:auto;" onclick="markProjectSignsPrinted('${id}', false)">ביטול</button>
+      </div>`
+    : `<div style="width:100%;margin-bottom:8px;"><button class="btn btn-accent btn-sm" onclick="markProjectSignsPrinted('${id}', true)">🖨️ סמן: הודפסו השלטים בפרויקט זה</button></div>`;
   document.getElementById('drawer-footer').innerHTML = `
+    ${signsPrintedHtml}
     <button class="btn btn-ghost btn-sm" onclick="showPage('admin-project-comms','${id}')">✏️ ניהול הנצחות</button>
     ${isAdminUser ? `<button class="btn btn-primary btn-sm" style="margin-right:auto;" onclick="startDrawerEdit()">📝 עריכה</button>
     <button class="btn btn-danger btn-sm" onclick="deleteProject('${id}','${esc(p.name)}');closeProjectDrawer()">🗑️ מחק</button>` : ''}
@@ -3692,6 +3941,7 @@ function renderAdminProjectsTable() {
       <td style="text-align:center;"><span class="priority-badge priority-${p.priority||3}">${p.priority||3}</span></td>
       <td>
         <strong style="color:var(--primary);text-decoration:underline dotted;">${esc(p.name)}</strong>
+        ${p.signsPrinted ? '<span style="font-size:10px;background:#FFF3E0;color:#E65100;border-radius:4px;padding:1px 6px;margin-right:6px;" title="שלטי הפרויקט הודפסו">🖨️ הודפסו</span>' : ''}
         ${p.notes ? `<div style="font-size:12px;color:var(--text-muted);margin-top:2px;">📝 ${esc(p.notes.length>60?p.notes.slice(0,60)+'…':p.notes)}</div>` : ''}
         ${countsHtml}
       </td>
@@ -4402,6 +4652,10 @@ function renderAdminSettingsPage() {
         <textarea class="form-control" id="ejs-template-text" rows="5" style="resize:vertical;">${esc(appSettings.wordingReminderTemplate||'')}</textarea>
         <div style="font-size:12px;color:var(--text-muted);margin-top:4px;">משתנים: {{comm_name}}, {{project_name}}, {{donor_name}}, {{sale_date}}</div>
       </div>
+      <div class="form-group">
+        <label>מייל להתראה על שלט שנמכר אחרי הדפסת שלטי הפרויקט</label>
+        <input class="form-control" type="email" id="ejs-signs-notify-email" value="${esc(appSettings.signsNotifyEmail||'')}" placeholder="taharat@taharat.org" dir="ltr" style="max-width:300px;">
+      </div>
       <button class="btn btn-primary" onclick="saveEmailjsSettings()">שמור הגדרות מייל</button>
     </div>
     <div class="card">
@@ -4477,13 +4731,16 @@ async function saveEmailjsSettings() {
   const publicKey = document.getElementById('ejs-public-key').value.trim();
   const reminderDays = parseInt(document.getElementById('ejs-reminder-days').value) || 14;
   const templateText = document.getElementById('ejs-template-text').value;
+  const signsNotifyEmail = document.getElementById('ejs-signs-notify-email').value.trim();
   appSettings.emailjs = { serviceId, templateId, publicKey };
+  appSettings.signsNotifyEmail = signsNotifyEmail;
   appSettings.wordingReminderDays = reminderDays;
   appSettings.wordingReminderTemplate = templateText;
   if (IS_CONFIGURED) {
     await db.ref('settings/emailjs').set({ serviceId, templateId, publicKey });
     await db.ref('settings/wordingReminderDays').set(reminderDays);
     await db.ref('settings/wordingReminderTemplate').set(templateText);
+    await db.ref('settings/signsNotifyEmail').set(signsNotifyEmail || null);
   }
   if (publicKey) emailjs.init(publicKey);
   showToast('הגדרות מייל נשמרו ✅', 'success');
@@ -5184,5 +5441,484 @@ if ('serviceWorker' in navigator) {
   });
 }
 </script>
+
+<!-- ─── Neyra service button ───────────────────────────────────────────────
+     Floating "report a bug / ask a question / request a feature" widget,
+     shared visually with the one in the Neyra platform (apps/tenant-web,
+     apps/admin-web — see packages/ui/src/ServiceButton.tsx there) but
+     implemented standalone here since this app has no build step and its
+     own separate Firebase Auth (not Neyra's Cognito). Copied from the same
+     widget in CRM THARA (crm-thara.neyra.tech) — keep the two in sync.
+     Tickets are created via apps/api's public service/external-tickets
+     endpoints and show up in Neyra Ops at ops.neyra.tech/service, identified
+     by "hanzaha:<username>" (users here log in by username, not email);
+     Neyra Ops shows them under the client "טהרת המשפחה".
+     NOTE: this block lives outside #app (a body-level sibling at the very
+     end of </body>) so it survives re-rendering of #app between views. -->
+<style>
+#neyra-service-widget-root{--nsw-surface:var(--bg-card,#fff);--nsw-sunken:#f2eefa;--nsw-border:var(--border,#e7e1f3);--nsw-text:var(--text,#1c1c3a);--nsw-muted:var(--text-muted,#6b6684);--nsw-purple:#7c5cbf;--nsw-pink:#d6549a;--nsw-ink:#5a3f92;--nsw-wash:rgba(124,92,191,.1);--nsw-grad:linear-gradient(135deg,#7c5cbf 0%,#b356a8 55%,#d6549a 100%);--nsw-spring:cubic-bezier(.34,1.56,.64,1);--nsw-out:cubic-bezier(.22,1,.36,1);font-family:inherit}
+#neyra-service-widget-root *{box-sizing:border-box}
+.nsw-fab{position:fixed;inset-inline-end:24px;inset-block-end:24px;z-index:9999;width:56px;height:56px;border-radius:50%;border:none;background:var(--nsw-grad);color:#fff;cursor:pointer;display:grid;place-items:center;box-shadow:0 10px 26px -8px rgba(124,92,191,.7),0 2px 6px rgba(28,28,96,.15);transition:transform .4s var(--nsw-spring),box-shadow .25s var(--nsw-out)}
+.nsw-fab:hover{transform:translateY(-2px) scale(1.05);box-shadow:0 14px 30px -8px rgba(124,92,191,.8),0 2px 6px rgba(28,28,96,.15)}
+.nsw-fab:active{transform:scale(.9);transition-duration:.08s}
+.nsw-fab:focus-visible{outline:3px solid rgba(124,92,191,.45);outline-offset:3px}
+.nsw-fab-icon{display:grid;place-items:center;transition:transform .45s var(--nsw-spring),opacity .2s}
+.nsw-fab[aria-expanded="true"] .nsw-fab-icon{transform:rotate(90deg)}
+.nsw-fab::after{content:"";position:absolute;inset:0;border-radius:50%;box-shadow:0 0 0 0 rgba(214,84,154,.45);animation:nsw-ping 2.8s var(--nsw-out) 1s 2}
+@keyframes nsw-ping{70%{box-shadow:0 0 0 14px rgba(214,84,154,0)}100%{box-shadow:0 0 0 0 rgba(214,84,154,0)}}
+.nsw-panel{position:fixed;inset-inline-end:24px;inset-block-end:92px;z-index:9999;width:384px;max-height:min(640px,calc(100vh - 120px));display:flex;flex-direction:column;background:var(--nsw-surface);color:var(--nsw-text);border:1px solid var(--nsw-border);border-radius:22px;box-shadow:0 30px 70px -20px rgba(28,28,96,.4),0 4px 14px rgba(28,28,96,.08);overflow:hidden;transform-origin:bottom left;animation:nsw-in .38s var(--nsw-out) both}
+[dir="ltr"] .nsw-panel{transform-origin:bottom right}
+@keyframes nsw-in{from{opacity:0;transform:translateY(12px) scale(.94)}}
+.nsw-head{position:relative;padding:20px 20px 16px;background:var(--nsw-grad);color:#fff}
+.nsw-head::after{content:"";position:absolute;inset:auto 0 -1px 0;height:18px;background:var(--nsw-surface);border-radius:18px 18px 0 0}
+.nsw-head-row{display:flex;align-items:center;gap:12px}
+.nsw-logo{width:40px;height:40px;border-radius:12px;background:rgba(255,255,255,.95);display:grid;place-items:center;flex:none;box-shadow:0 4px 12px -4px rgba(0,0,0,.25)}
+.nsw-logo img{width:30px;height:auto;display:block}
+.nsw-title{margin:0;font-size:16px;font-weight:700;line-height:1.2}
+.nsw-sub{margin:2px 0 0;font-size:13px;opacity:.88}
+.nsw-close{margin-inline-start:auto;width:34px;height:34px;border-radius:10px;border:none;background:rgba(255,255,255,.16);color:#fff;cursor:pointer;display:grid;place-items:center;transition:background .2s,transform .35s var(--nsw-spring)}
+.nsw-close:hover{background:rgba(255,255,255,.28)}
+.nsw-close:active{transform:scale(.9)}
+.nsw-body{padding:4px 20px 20px;overflow-y:auto;display:flex;flex-direction:column;gap:14px}
+.nsw-seg{display:flex;gap:2px;padding:4px;background:var(--nsw-sunken);border-radius:12px}
+.nsw-seg button{flex:1;border:none;background:transparent;color:var(--nsw-muted);font:inherit;font-size:13px;font-weight:600;min-height:34px;border-radius:9px;cursor:pointer;transition:background .2s,color .2s,box-shadow .2s,transform .35s var(--nsw-spring)}
+.nsw-seg button:active{transform:scale(.96)}
+.nsw-seg button[aria-pressed="true"]{background:var(--nsw-surface);color:var(--nsw-ink);box-shadow:0 1px 3px rgba(28,28,96,.1),0 4px 10px -4px rgba(28,28,96,.12)}
+.nsw-label{font-size:12px;font-weight:600;color:var(--nsw-muted);margin:0 0 -6px}
+.nsw-types{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}
+.nsw-type{display:flex;flex-direction:column;align-items:center;gap:6px;padding:12px 6px;border-radius:14px;border:1.5px solid var(--nsw-border);background:var(--nsw-surface);color:var(--nsw-muted);font:inherit;font-size:12.5px;font-weight:600;cursor:pointer;transition:border-color .2s,background .2s,color .2s,transform .35s var(--nsw-spring),box-shadow .2s}
+.nsw-type:hover{border-color:rgba(124,92,191,.45);color:var(--nsw-text)}
+.nsw-type:active{transform:scale(.95)}
+.nsw-type[aria-pressed="true"]{border-color:var(--nsw-purple);background:var(--nsw-wash);color:var(--nsw-ink);box-shadow:0 0 0 3px rgba(124,92,191,.12)}
+.nsw-type-ic{width:34px;height:34px;border-radius:10px;display:grid;place-items:center;background:var(--nsw-sunken);transition:background .2s,color .2s}
+.nsw-type[aria-pressed="true"] .nsw-type-ic{background:var(--nsw-grad);color:#fff}
+.nsw-input{width:100%;font:inherit;font-size:14px;color:var(--nsw-text);background:var(--nsw-surface);border:1px solid var(--border-strong,#d6cdea);border-radius:12px;padding:10px 12px;transition:border-color .2s,box-shadow .2s;resize:vertical}
+.nsw-input::placeholder{color:var(--nsw-muted);opacity:.8}
+.nsw-input:focus{outline:none;border-color:var(--nsw-purple);box-shadow:0 0 0 4px rgba(124,92,191,.15)}
+.nsw-switch{display:flex;align-items:center;gap:10px;padding:10px 12px;border-radius:12px;background:var(--nsw-sunken);font-size:13px;cursor:pointer;user-select:none}
+.nsw-switch input{position:absolute;opacity:0;pointer-events:none}
+.nsw-switch-track{margin-inline-start:auto;width:38px;height:22px;border-radius:999px;background:var(--border-strong,#d6cdea);position:relative;flex:none;transition:background .25s}
+.nsw-switch-track::after{content:"";position:absolute;top:3px;right:3px;width:16px;height:16px;border-radius:50%;background:#fff;box-shadow:0 1px 3px rgba(0,0,0,.2);transition:transform .35s var(--nsw-spring)}
+.nsw-switch input:checked + .nsw-switch-track{background:var(--nsw-purple)}
+.nsw-switch input:checked + .nsw-switch-track::after{transform:translateX(-16px)}
+.nsw-switch input:focus-visible + .nsw-switch-track{outline:2px solid var(--nsw-purple);outline-offset:2px}
+.nsw-btn{display:inline-flex;align-items:center;justify-content:center;gap:8px;min-height:44px;padding:0 18px;border:none;border-radius:12px;background:var(--nsw-grad);color:#fff;font:inherit;font-size:14px;font-weight:600;cursor:pointer;box-shadow:0 8px 20px -8px rgba(124,92,191,.65);transition:transform .35s var(--nsw-spring),box-shadow .2s,opacity .2s}
+.nsw-btn:hover:not(:disabled){transform:translateY(-1px)}
+.nsw-btn:active:not(:disabled){transform:scale(.96);transition-duration:.08s}
+.nsw-btn:disabled{opacity:.6;cursor:progress}
+.nsw-btn-icon{width:44px;padding:0;flex:none}
+.nsw-ghost{display:inline-flex;align-items:center;gap:6px;border:1px solid var(--nsw-border);background:var(--nsw-surface);color:var(--nsw-muted);font:inherit;font-size:12.5px;font-weight:600;padding:6px 12px;border-radius:999px;cursor:pointer;transition:color .2s,border-color .2s,transform .35s var(--nsw-spring)}
+.nsw-ghost:hover{color:var(--nsw-ink);border-color:rgba(124,92,191,.45)}
+.nsw-ghost:active{transform:scale(.95)}
+.nsw-error{margin:0;font-size:13px;color:#d9435a;background:rgba(217,67,90,.08);border-radius:10px;padding:8px 10px}
+.nsw-note{display:flex;gap:8px;align-items:flex-start;margin:0;font-size:13px;color:#a8690f;background:rgba(199,129,27,.1);border-radius:10px;padding:8px 10px;text-align:start}
+.nsw-done{display:flex;flex-direction:column;align-items:center;text-align:center;gap:10px;padding:18px 0 4px}
+.nsw-done-badge{width:64px;height:64px;border-radius:50%;background:var(--nsw-grad);color:#fff;display:grid;place-items:center;box-shadow:0 12px 26px -10px rgba(124,92,191,.8);animation:nsw-pop .6s var(--nsw-spring) both}
+@keyframes nsw-pop{from{transform:scale(.3);opacity:0}}
+.nsw-done h4{margin:4px 0 0;font-size:16px}
+.nsw-done p{margin:0;font-size:13px;color:var(--nsw-muted)}
+.nsw-num{font-weight:700;color:var(--nsw-ink)}
+.nsw-empty{display:flex;flex-direction:column;align-items:center;gap:8px;padding:26px 0;color:var(--nsw-muted);font-size:13px}
+.nsw-empty-ic{width:52px;height:52px;border-radius:16px;background:var(--nsw-sunken);display:grid;place-items:center;color:var(--nsw-purple)}
+.nsw-skel{height:72px;border-radius:14px;background:linear-gradient(90deg,var(--nsw-sunken) 0%,var(--nsw-surface) 50%,var(--nsw-sunken) 100%) 0 0/200% 100%;animation:nsw-shimmer 1.3s linear infinite}
+@keyframes nsw-shimmer{to{background-position:-200% 0}}
+.nsw-ticket{border:1px solid var(--nsw-border);border-radius:16px;background:var(--nsw-surface);transition:box-shadow .25s,border-color .25s;animation:nsw-in .35s var(--nsw-out) both}
+.nsw-ticket:hover{box-shadow:0 8px 22px -12px rgba(28,28,96,.25)}
+.nsw-ticket[data-open="true"]{border-color:rgba(124,92,191,.4);box-shadow:0 10px 26px -14px rgba(124,92,191,.45)}
+.nsw-ticket-head{width:100%;display:flex;align-items:center;gap:10px;padding:12px 14px;border:none;background:none;color:inherit;font:inherit;text-align:start;cursor:pointer}
+.nsw-ticket-ic{width:32px;height:32px;border-radius:10px;background:var(--nsw-wash);color:var(--nsw-ink);display:grid;place-items:center;flex:none}
+.nsw-ticket-main{min-width:0;flex:1}
+.nsw-ticket-title{display:flex;align-items:center;gap:6px;font-size:13.5px;font-weight:600}
+.nsw-ticket-desc{margin:2px 0 0;font-size:12.5px;color:var(--nsw-muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.nsw-ticket[data-open="true"] .nsw-ticket-desc{white-space:normal}
+.nsw-chev{color:var(--nsw-muted);transition:transform .35s var(--nsw-spring);flex:none}
+.nsw-ticket[data-open="true"] .nsw-chev{transform:rotate(180deg)}
+.nsw-ticket-body{display:flex;flex-direction:column;gap:8px;padding:0 14px 14px}
+.nsw-bubble{align-self:flex-start;max-width:88%;font-size:13px;line-height:1.45;background:var(--nsw-sunken);border-radius:14px 14px 14px 4px;padding:8px 12px}
+.nsw-reply{display:flex;gap:8px}
+.nsw-shot{display:block;border-radius:12px;overflow:hidden;border:1px solid var(--nsw-border)}
+.nsw-shot img{display:block;width:100%;height:auto}
+.nsw-muted{margin:0;font-size:12.5px;color:var(--nsw-muted);display:flex;align-items:center;gap:6px}
+.nsw-actions{display:flex;gap:6px;flex-wrap:wrap}
+.nsw-pill{font-size:11.5px;font-weight:600;padding:3px 9px;border-radius:999px;white-space:nowrap;display:inline-flex;align-items:center;gap:5px}
+.nsw-pill::before{content:"";width:6px;height:6px;border-radius:50%;background:currentColor}
+@media (max-width:520px){.nsw-panel{inset-inline:8px;inset-block-end:84px;width:auto;max-height:calc(100vh - 100px)}.nsw-fab{inset-inline-end:16px;inset-block-end:16px;width:52px;height:52px}}
+@media (prefers-reduced-motion:reduce){#neyra-service-widget-root *{animation:none!important;transition:none!important}}
+#neyra-service-widget-root{font-family:'Heebo',sans-serif}
+#neyra-service-widget-root .nsw-panel[hidden],#neyra-service-widget-root .nsw-fab[hidden]{display:none}
+</style>
+<div id="neyra-service-widget-root">
+  <button id="neyra-svc-btn" class="nsw-fab" type="button" title="מרכז השירות" aria-label="מרכז השירות" aria-expanded="false" hidden></button>
+  <div id="neyra-svc-panel" class="nsw-panel" dir="rtl" role="dialog" aria-label="מרכז השירות" hidden></div>
+</div>
+<script>
+(function () {
+  // Same look as packages/ui/src/ServiceButton.tsx in the Neyra monorepo
+  // (styles above are copied from its STYLES constant) — keep the two in sync.
+  const API_BASE = 'https://ops.neyra.tech';
+  const NEYRA_ICON = 'https://ops.neyra.tech/neyra-icon.png';
+  const TYPE_LABELS = { question: 'שאלה', dev_request: 'בקשה לפיתוח', bug: 'דיווח בעיה' };
+  const STATUS_LABELS = { open: 'פתוח', in_progress: 'בטיפול', awaiting_reporter: 'ממתין לתשובה ממך', resolved_closed: 'טופל ונסגר', cannot_respond_now: 'לא ניתן לתת מענה כרגע' };
+  const STATUS_COLORS = {
+    open: { bg: '#efe9fb', fg: '#5a3f92' },
+    in_progress: { bg: '#fdf3e2', fg: '#9a5f0d' },
+    awaiting_reporter: { bg: '#fde8f2', fg: '#a8346f' },
+    resolved_closed: { bg: '#e5f6ef', fg: '#1a7350' },
+    cannot_respond_now: { bg: '#f1eff6', fg: '#5f5a78' },
+  };
+  const ICONS = {
+  help: "M9.1 9a3 3 0 0 1 5.8 1c0 2-3 3-3 3M12 17h.01M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z",
+  close: "M18 6 6 18M6 6l12 12",
+  question: "M8 10h.01M12 10h.01M16 10h.01M21 12c0 4.4-4 8-9 8a9.8 9.8 0 0 1-4-.8L3 20l1.3-3.9A7.4 7.4 0 0 1 3 12c0-4.4 4-8 9-8s9 3.6 9 8Z",
+  dev: "M12 3v3M18.4 5.6l-2.1 2.1M21 12h-3M6 12H3M7.8 7.7 5.6 5.6M12 21a5 5 0 0 0 0-10 5 5 0 0 0 0 10Z",
+  bug: "M8 2l1.9 1.9M16 2l-1.9 1.9M9 7.1V6a3 3 0 0 1 6 0v1.1M12 20c-3.3 0-6-2.7-6-6v-3a4 4 0 0 1 4-4h4a4 4 0 0 1 4 4v3c0 3.3-2.7 6-6 6ZM12 20v-9M6.5 13H3M21 13h-3.5M4 21l2.5-2.5M20 21l-2.5-2.5M4 7l2.3 2M20 7l-2.3 2",
+  send: "m22 2-7 20-4-9-9-4 20-7ZM22 2 11 13",
+  camera: "M14.5 4h-5L7 7H4a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2h-3l-2.5-3ZM12 17a4 4 0 1 0 0-8 4 4 0 0 0 0 8Z",
+  check: "M20 6 9 17l-5-5",
+  chevron: "m6 9 6 6 6-6",
+  alert: "M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0ZM12 9v4M12 17h.01",
+  archive: "M21 8v13H3V8M1 3h22v5H1zM10 12h4",
+  reopen: "M3 12a9 9 0 1 0 3-6.7L3 8M3 3v5h5",
+  inbox: "M22 12h-6l-2 3h-4l-2-3H2M5.5 5.1 2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.5-6.9A2 2 0 0 0 16.8 4H7.2a2 2 0 0 0-1.7 1.1Z",
+};
+  const TYPE_ICON = { question: ICONS.question, dev_request: ICONS.dev, bug: ICONS.bug };
+  function icon(d, size, sw) {
+    size = size || 18; sw = sw || 2;
+    return '<svg width="' + size + '" height="' + size + '" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="' + sw + '" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="' + d + '"/></svg>';
+  }
+
+  const btn = document.getElementById('neyra-svc-btn');
+  const panel = document.getElementById('neyra-svc-panel');
+  let tab = 'new';
+  let ticketsView = 'active';
+  let selectedType = 'question';
+  let lastTicketNumber = null;
+  let lastShotFailed = false;
+
+  function reporterExternalId() {
+    return (typeof currentUser !== 'undefined' && currentUser && currentUser.username) ? 'hanzaha:' + currentUser.username : null;
+  }
+
+  async function apiFetch(path, opts) {
+    const res = await fetch(API_BASE + path, Object.assign({ headers: { 'Content-Type': 'application/json' } }, opts || {}));
+    if (!res.ok) {
+      const body = await res.json().catch(() => ({}));
+      throw new Error(body.message || ('Request failed (' + res.status + ')'));
+    }
+    if (res.status === 204) return undefined;
+    return res.json();
+  }
+
+  function statusBadge(status) {
+    const c = STATUS_COLORS[status] || STATUS_COLORS.open;
+    return '<span class="nsw-pill" style="background:' + c.bg + ';color:' + c.fg + '">' + (STATUS_LABELS[status] || status) + '</span>';
+  }
+
+  function esc(s) {
+    const d = document.createElement('div');
+    d.textContent = s == null ? '' : String(s);
+    return d.innerHTML;
+  }
+
+  function setFabIcon(open) {
+    btn.innerHTML = '<span class="nsw-fab-icon">' + icon(open ? ICONS.close : ICONS.help, 26) + '</span>';
+    btn.setAttribute('aria-expanded', open ? 'true' : 'false');
+    btn.setAttribute('aria-label', open ? 'סגירת מרכז השירות' : 'מרכז השירות');
+  }
+
+  function render() {
+    panel.innerHTML =
+      '<div class="nsw-head"><div class="nsw-head-row">' +
+        '<span class="nsw-logo"><img src="' + NEYRA_ICON + '" alt="Neyra"></span>' +
+        '<div><h3 class="nsw-title">מרכז השירות</h3><p class="nsw-sub">איך נוכל לעזור?</p></div>' +
+        '<button type="button" class="nsw-close" id="neyra-svc-close" aria-label="סגירה">' + icon(ICONS.close, 18) + '</button>' +
+      '</div></div>' +
+      '<div class="nsw-body">' +
+        '<div class="nsw-seg" role="tablist">' +
+          '<button type="button" data-tab="new" aria-pressed="' + (tab === 'new') + '">פנייה חדשה</button>' +
+          '<button type="button" data-tab="mine" aria-pressed="' + (tab === 'mine') + '">הפניות שלי</button>' +
+        '</div>' +
+        '<div id="neyra-svc-body" style="display:flex;flex-direction:column;gap:14px"></div>' +
+      '</div>';
+
+    panel.querySelectorAll('[data-tab]').forEach((b) => b.addEventListener('click', () => { tab = b.dataset.tab; lastTicketNumber = null; render(); }));
+    document.getElementById('neyra-svc-close').addEventListener('click', hidePanel);
+
+    if (tab === 'new') renderNewForm();
+    else renderMyTickets();
+  }
+
+  function renderDone() {
+    const body = document.getElementById('neyra-svc-body');
+    body.innerHTML =
+      '<div class="nsw-done">' +
+        '<span class="nsw-done-badge">' + icon(ICONS.check, 30, 2.5) + '</span>' +
+        '<h4>הפנייה נשלחה</h4>' +
+        '<p>מספר פנייה <span class="nsw-num">#' + esc(lastTicketNumber) + '</span> — נעדכן אותך כאן</p>' +
+        (lastShotFailed ? '<p class="nsw-note">' + icon(ICONS.alert, 16) + 'לא הצלחנו לצרף את צילום המסך, אבל הפנייה נשלחה</p>' : '') +
+        '<button type="button" class="nsw-btn" id="neyra-svc-to-mine" style="margin-top:6px">למעקב אחר הפניות שלי</button>' +
+      '</div>';
+    document.getElementById('neyra-svc-to-mine').addEventListener('click', () => { tab = 'mine'; lastTicketNumber = null; render(); });
+  }
+
+  function renderNewForm() {
+    if (lastTicketNumber !== null) { renderDone(); return; }
+    const body = document.getElementById('neyra-svc-body');
+    body.innerHTML =
+      '<form id="neyra-svc-form" style="display:flex;flex-direction:column;gap:14px">' +
+        '<p class="nsw-label">סוג הפנייה</p>' +
+        '<div class="nsw-types">' +
+          Object.keys(TYPE_LABELS).map((k) =>
+            '<button type="button" class="nsw-type" data-type="' + k + '" aria-pressed="' + (selectedType === k) + '">' +
+              '<span class="nsw-type-ic">' + icon(TYPE_ICON[k], 18) + '</span>' + TYPE_LABELS[k] +
+            '</button>').join('') +
+        '</div>' +
+        '<textarea id="neyra-svc-desc" class="nsw-input" rows="4" placeholder="ספרו לנו מה קרה או מה צריך…" aria-label="תיאור הפנייה" required></textarea>' +
+        '<label class="nsw-switch">' + icon(ICONS.camera, 17) + 'צרף צילום מסך של המסך הנוכחי' +
+          '<input type="checkbox" id="neyra-svc-shot"><span class="nsw-switch-track" aria-hidden="true"></span>' +
+        '</label>' +
+        '<p class="nsw-error" id="neyra-svc-error" hidden></p>' +
+        '<button type="submit" class="nsw-btn" id="neyra-svc-submit" disabled>שלח פנייה ' + icon(ICONS.send, 16) + '</button>' +
+      '</form>';
+
+    body.querySelectorAll('.nsw-type').forEach((b) => b.addEventListener('click', () => {
+      selectedType = b.dataset.type;
+      body.querySelectorAll('.nsw-type').forEach((x) => x.setAttribute('aria-pressed', String(x.dataset.type === selectedType)));
+    }));
+    const desc = document.getElementById('neyra-svc-desc');
+    const submitBtn = document.getElementById('neyra-svc-submit');
+    desc.addEventListener('input', () => { submitBtn.disabled = !desc.value.trim(); });
+
+    document.getElementById('neyra-svc-form').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const errEl = document.getElementById('neyra-svc-error');
+      const description = desc.value.trim();
+      if (!description) return;
+      const repId = reporterExternalId();
+      const showError = (msg) => { errEl.textContent = msg; errEl.hidden = false; };
+      if (!repId) { showError('יש להתחבר כדי לשלוח פנייה'); return; }
+
+      errEl.hidden = true;
+      submitBtn.disabled = true;
+      submitBtn.textContent = 'שולח…';
+      try {
+        let screenshotS3Key;
+        let shotFailed = false;
+        if (document.getElementById('neyra-svc-shot').checked && window.html2canvas) {
+          try {
+            const ignoreElements = (el) => el.id === 'neyra-service-widget-root';
+            let canvas;
+            try {
+              // Default path: html2canvas re-implements CSS parsing/painting
+              // itself, sharpest result but throws on modern color syntax
+              // (color-mix()/color() — common on form controls in current
+              // Chrome, e.g. this page's own checkboxes/selects).
+              canvas = await html2canvas(document.body, { logging: false, useCORS: true, ignoreElements });
+            } catch (parseErr) {
+              // Fallback: foreignObjectRendering hands painting to the
+              // browser's own renderer via an SVG <foreignObject> instead of
+              // html2canvas's parser, sidestepping the crash entirely.
+              canvas = await html2canvas(document.body, {
+                logging: false,
+                useCORS: true,
+                ignoreElements,
+                foreignObjectRendering: true,
+              });
+            }
+            const blob = await new Promise((resolve) => canvas.toBlob(resolve, 'image/png'));
+            if (blob) {
+              const up = await apiFetch('/service/external-tickets/screenshot-upload-url', {
+                method: 'POST',
+                body: JSON.stringify({ filename: 'screenshot-' + Date.now() + '.png', contentType: 'image/png' }),
+              });
+              const putRes = await fetch(up.uploadUrl, { method: 'PUT', headers: { 'Content-Type': 'image/png' }, body: blob });
+              if (putRes.ok) screenshotS3Key = up.s3Key;
+              else shotFailed = true;
+            } else {
+              shotFailed = true;
+            }
+          } catch (shotErr) {
+            // Screenshot failure shouldn't block sending the ticket itself —
+            // but it must be surfaced, not swallowed silently.
+            shotFailed = true;
+          }
+        }
+        const ticket = await apiFetch('/service/external-tickets', {
+          method: 'POST',
+          body: JSON.stringify({
+            type: selectedType,
+            description: description,
+            reporterExternalId: repId,
+            screenshotS3Key: screenshotS3Key,
+            pageUrl: window.location.href,
+          }),
+        });
+        lastTicketNumber = ticket.number;
+        lastShotFailed = shotFailed;
+        renderDone();
+      } catch (err) {
+        showError(err.message || 'שליחת הפנייה נכשלה');
+        submitBtn.disabled = false;
+        submitBtn.innerHTML = 'שלח פנייה ' + icon(ICONS.send, 16);
+      }
+    });
+  }
+
+  async function loadTicketScreenshot(id) {
+    const el = panel.querySelector('.neyra-screenshot[data-id="' + id + '"]');
+    if (!el) return;
+    try {
+      const res = await apiFetch('/service/external-tickets/' + id + '/screenshot-url?reporterExternalId=' + encodeURIComponent(reporterExternalId()));
+      el.outerHTML = '<a class="nsw-shot" href="' + res.downloadUrl + '" target="_blank" rel="noreferrer"><img src="' + res.downloadUrl + '" alt="צילום מסך שצורף לפנייה"></a>';
+    } catch (err) {
+      el.outerHTML = '<p class="nsw-muted">' + icon(ICONS.camera, 14) + ' לא ניתן לטעון את צילום המסך</p>';
+    }
+  }
+
+  async function renderMyTickets() {
+    const body = document.getElementById('neyra-svc-body');
+    body.innerHTML =
+      '<div class="nsw-seg">' +
+        '<button type="button" data-view="active" aria-pressed="' + (ticketsView === 'active') + '">פעילות</button>' +
+        '<button type="button" data-view="archived" aria-pressed="' + (ticketsView === 'archived') + '">ארכיון</button>' +
+      '</div>' +
+      '<div id="neyra-svc-list" style="display:flex;flex-direction:column;gap:10px"><div class="nsw-skel"></div><div class="nsw-skel"></div></div>';
+
+    body.querySelectorAll('[data-view]').forEach((b) => b.addEventListener('click', () => { ticketsView = b.dataset.view; renderMyTickets(); }));
+
+    const repId = reporterExternalId();
+    const listEl = document.getElementById('neyra-svc-list');
+    const empty = (msg) => '<div class="nsw-empty"><span class="nsw-empty-ic">' + icon(ICONS.inbox, 24) + '</span>' + msg + '</div>';
+    if (!repId) { listEl.innerHTML = empty('יש להתחבר כדי לצפות בפניות.'); return; }
+
+    let tickets;
+    try {
+      tickets = await apiFetch('/service/external-tickets?reporterExternalId=' + encodeURIComponent(repId) + (ticketsView === 'archived' ? '&archived=true' : ''));
+    } catch (err) {
+      listEl.innerHTML = '<p class="nsw-error">שגיאה בטעינת הפניות</p>';
+      return;
+    }
+
+    if (!tickets.length) {
+      listEl.innerHTML = empty(ticketsView === 'active' ? 'אין לך פניות פעילות.' : 'הארכיון ריק.');
+      return;
+    }
+
+    listEl.innerHTML = tickets.map((t) => {
+      const closed = t.status === 'resolved_closed';
+      const comments = (t.comments || []).map((c) => '<div class="nsw-bubble">' + esc(c.body) + '</div>').join('');
+      return (
+        '<div class="nsw-ticket" data-open="false" data-id="' + t.id + '">' +
+          '<button type="button" class="nsw-ticket-head" data-toggle="' + t.id + '" aria-expanded="false">' +
+            '<span class="nsw-ticket-ic">' + icon(TYPE_ICON[t.type] || ICONS.question, 16) + '</span>' +
+            '<span class="nsw-ticket-main">' +
+              '<span class="nsw-ticket-title">#' + t.number + ' · ' + (TYPE_LABELS[t.type] || t.type) + '</span>' +
+              '<p class="nsw-ticket-desc">' + esc(t.description) + '</p>' +
+            '</span>' +
+            statusBadge(t.status) +
+            '<span class="nsw-chev">' + icon(ICONS.chevron, 16) + '</span>' +
+          '</button>' +
+          '<div class="nsw-ticket-body neyra-expand" data-id="' + t.id + '" data-has-screenshot="' + (t.screenshotS3Key ? '1' : '') + '" hidden>' +
+            (t.screenshotS3Key ? '<div class="nsw-skel neyra-screenshot" data-id="' + t.id + '" style="height:120px"></div>' : '') +
+            comments +
+            (closed
+              ? '<p class="nsw-muted">הפנייה סגורה — לא ניתן להגיב.</p>'
+              : '<div class="nsw-reply">' +
+                  '<input class="nsw-input neyra-reply" data-id="' + t.id + '" placeholder="הוסף תגובה…" aria-label="תגובה">' +
+                  '<button type="button" class="nsw-btn nsw-btn-icon neyra-send" data-id="' + t.id + '" aria-label="שלח תגובה">' + icon(ICONS.send, 16) + '</button>' +
+                '</div>') +
+            '<div class="nsw-actions">' +
+              (closed ? '<button type="button" class="nsw-ghost neyra-reopen" data-id="' + t.id + '">' + icon(ICONS.reopen, 14) + 'פתח מחדש את הפנייה</button>' : '') +
+              '<button type="button" class="nsw-ghost neyra-archive" data-id="' + t.id + '">' + icon(ICONS.archive, 14) + (ticketsView === 'active' ? 'העבר לארכיון' : 'החזר מהארכיון') + '</button>' +
+            '</div>' +
+          '</div>' +
+        '</div>'
+      );
+    }).join('');
+
+    listEl.querySelectorAll('[data-toggle]').forEach((el) => el.addEventListener('click', () => {
+      const id = el.dataset.toggle;
+      const card = listEl.querySelector('.nsw-ticket[data-id="' + id + '"]');
+      const exp = listEl.querySelector('.neyra-expand[data-id="' + id + '"]');
+      if (!exp) return;
+      const opening = exp.hidden;
+      exp.hidden = !opening;
+      card.dataset.open = String(opening);
+      el.setAttribute('aria-expanded', String(opening));
+      if (opening && exp.dataset.hasScreenshot === '1' && !exp.dataset.screenshotLoaded) {
+        exp.dataset.screenshotLoaded = '1';
+        loadTicketScreenshot(id);
+      }
+    }));
+    const sendReply = async (id) => {
+      const input = listEl.querySelector('.neyra-reply[data-id="' + id + '"]');
+      const val = input.value.trim();
+      if (!val) return;
+      await apiFetch('/service/external-tickets/' + id + '/comments', {
+        method: 'POST',
+        body: JSON.stringify({ body: val, reporterExternalId: repId }),
+      });
+      renderMyTickets();
+    };
+    listEl.querySelectorAll('.neyra-send').forEach((el) => el.addEventListener('click', () => sendReply(el.dataset.id)));
+    listEl.querySelectorAll('.neyra-reply').forEach((el) => el.addEventListener('keydown', (e) => { if (e.key === 'Enter') sendReply(el.dataset.id); }));
+    listEl.querySelectorAll('.neyra-archive').forEach((el) => el.addEventListener('click', async () => {
+      const id = el.dataset.id;
+      await apiFetch('/service/external-tickets/' + id + '/archive', {
+        method: 'POST',
+        body: JSON.stringify({ archived: ticketsView === 'active', reporterExternalId: repId }),
+      });
+      renderMyTickets();
+    }));
+    listEl.querySelectorAll('.neyra-reopen').forEach((el) => el.addEventListener('click', async () => {
+      const id = el.dataset.id;
+      await apiFetch('/service/external-tickets/' + id + '/reopen', {
+        method: 'POST',
+        body: JSON.stringify({ reporterExternalId: repId }),
+      });
+      renderMyTickets();
+    }));
+  }
+
+  function showPanel() { tab = 'new'; lastTicketNumber = null; render(); panel.hidden = false; setFabIcon(true); }
+  function hidePanel() { panel.hidden = true; setFabIcon(false); }
+
+  setFabIcon(false);
+  btn.addEventListener('click', () => { if (panel.hidden) showPanel(); else hidePanel(); });
+  document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && !panel.hidden) hidePanel(); });
+
+  window.neyraServiceWidget = {
+    show: function () { btn.hidden = false; },
+    hide: function () { btn.hidden = true; hidePanel(); },
+  };
+
+  // Hook into the app's existing login/logout flow (startApp / doLogout,
+  // both top-level function declarations further up this same script, so they're
+  // reachable on window) rather than duplicating its auth-state logic here.
+  if (typeof window.startApp === 'function') {
+    const _origStartApp = window.startApp;
+    window.startApp = async function () {
+      const result = await _origStartApp.apply(this, arguments);
+      window.neyraServiceWidget.show();
+      return result;
+    };
+  }
+  if (typeof window.doLogout === 'function') {
+    const _origLogout = window.doLogout;
+    window.doLogout = function () {
+      const result = _origLogout.apply(this, arguments);
+      window.neyraServiceWidget.hide();
+      return result;
+    };
+  }
+
+  // Defensive: if currentUser is already populated by the time this script
+  // runs (e.g. a fast page load where startApp already fired before this
+  // block registered its hook), show immediately instead of waiting for the
+  // next login event that may never come this session.
+  if (reporterExternalId()) window.neyraServiceWidget.show();
+})();
+</script>
+
 </body>
 </html>
