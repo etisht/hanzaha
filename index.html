@@ -886,6 +886,22 @@
       <input class="form-control" type="number" min="0" id="project-population" placeholder="מספר תושבים (רשות)">
     </div>
     <div class="form-group">
+      <label>מגזר</label>
+      <select class="form-control" id="project-sector">
+        <option value="">— בחר מגזר —</option>
+        <option value="חרדי">חרדי</option>
+        <option value="דתי">דתי</option>
+        <option value="דתי ומסורתי">דתי ומסורתי</option>
+        <option value="מסורתי וחילוני">מסורתי וחילוני</option>
+        <option value="דתי, מסורתי וחילוני">דתי, מסורתי וחילוני</option>
+        <option value="כללי">כללי</option>
+      </select>
+    </div>
+    <div class="form-group">
+      <label>מיקום</label>
+      <input class="form-control" id="project-location" placeholder="מיקום המקווה (רשות)">
+    </div>
+    <div class="form-group">
       <label>סטאטוס פרויקט</label>
       <select class="form-control" id="project-status">
         <option value="active">פתוח למכירה</option>
@@ -1189,6 +1205,7 @@ let storage = null;
 let functions = null;
 let currentUser = null;
 const ISRAEL_REGIONS = ['צפון', 'חיפה והקריות', 'מרכז', 'שרון', 'ירושלים והסביבה', 'שפלה', 'דרום', 'יהודה ושומרון', 'אילת והערבה'];
+const PROJECT_SECTORS = ['חרדי', 'דתי', 'דתי ומסורתי', 'מסורתי וחילוני', 'דתי, מסורתי וחילוני', 'כללי'];
 let appSettings = {
   captureExpiryDays: 3,
   donationSources: ["מוקד מוריה", "מוקד בני ברק", "אירועים מוריה", "אחר", "מתרים עקיבא", "מתרים הרב חיים לוי", "מתרים אנגליה"],
@@ -1729,7 +1746,9 @@ async function renderProjectDetailPage() {
   setTopbar(project.name, `<button class="btn btn-ghost btn-sm" onclick="showPage('projects')">← חזור</button>`);
   const content = document.getElementById('page-content');
   const projectMetaBits = [];
+  if (project.location) projectMetaBits.push(`📌 ${esc(project.location)}`);
   if (project.region) projectMetaBits.push(`📍 ${esc(project.region)}`);
+  if (project.sector) projectMetaBits.push(`🏘️ ${esc(project.sector)}`);
   if (project.population != null) projectMetaBits.push(`👥 ${project.population.toLocaleString()} תושבים`);
   const descriptionHtml = (project.description || projectMetaBits.length) ?
     `<div style="background:#F9F6F2;border:1px solid var(--border);border-radius:10px;padding:12px 16px;margin-bottom:18px;font-size:14px;color:var(--text-muted);line-height:1.7;">
@@ -2175,7 +2194,9 @@ function openCommDetail(commId) {
       <div style="font-size:13px;font-weight:700;color:var(--primary-dark);margin-bottom:6px;">🕍 פרטי המקווה</div>
       <div class="info-row"><span class="info-label">שם:</span><span><strong>${esc(project.name)}</strong></span></div>
       ${project.description ? `<div class="info-row"><span class="info-label">תיאור:</span><span>${esc(project.description)}</span></div>` : ''}
+      ${project.location ? `<div class="info-row"><span class="info-label">מיקום:</span><span>${esc(project.location)}</span></div>` : ''}
       ${project.region ? `<div class="info-row"><span class="info-label">איזור:</span><span>${esc(project.region)}</span></div>` : ''}
+      ${project.sector ? `<div class="info-row"><span class="info-label">מגזר:</span><span>${esc(project.sector)}</span></div>` : ''}
       ${project.population != null ? `<div class="info-row"><span class="info-label">מס׳ תושבים:</span><span>${project.population.toLocaleString()}</span></div>` : ''}
     </div>`;
   }
@@ -3382,10 +3403,12 @@ function renderDrawerView() {
       <div class="drawer-section-body">${esc(p.description)}</div>
     </div>` : ''}
 
-    ${(p.region || p.population != null) ? `
+    ${(p.region || p.population != null || p.sector || p.location) ? `
     <div class="drawer-section">
       <div class="drawer-section-title">🗺️ נתוני איזור</div>
+      ${p.location ? `<div class="drawer-row"><span class="drawer-lbl">מיקום:</span> <strong>${esc(p.location)}</strong></div>` : ''}
       ${p.region ? `<div class="drawer-row"><span class="drawer-lbl">איזור:</span> <strong>${esc(p.region)}</strong></div>` : ''}
+      ${p.sector ? `<div class="drawer-row"><span class="drawer-lbl">מגזר:</span> <strong>${esc(p.sector)}</strong></div>` : ''}
       ${p.population != null ? `<div class="drawer-row"><span class="drawer-lbl">מס׳ תושבים:</span> <strong>${p.population.toLocaleString()}</strong></div>` : ''}
     </div>` : ''}
 
@@ -3461,6 +3484,17 @@ function startDrawerEdit() {
       <input class="form-control" type="number" min="0" id="drawer-population" value="${p.population != null ? p.population : ''}" placeholder="מספר תושבים (רשות)">
     </div>
     <div class="form-group">
+      <label>מגזר</label>
+      <select class="form-control" id="drawer-sector">
+        <option value="">— בחר מגזר —</option>
+        ${PROJECT_SECTORS.map(s => `<option value="${esc(s)}"${p.sector === s ? ' selected' : ''}>${esc(s)}</option>`).join('')}
+      </select>
+    </div>
+    <div class="form-group">
+      <label>מיקום</label>
+      <input class="form-control" id="drawer-location" value="${esc(p.location||'')}" placeholder="מיקום המקווה (רשות)">
+    </div>
+    <div class="form-group">
       <label>הערות</label>
       <textarea class="form-control" id="drawer-notes" rows="3" style="resize:vertical;">${esc(p.notes||'')}</textarea>
     </div>
@@ -3512,6 +3546,8 @@ async function saveDrawerProject() {
   const region      = document.getElementById('drawer-region').value || null;
   const populationRaw = document.getElementById('drawer-population').value;
   const population  = populationRaw !== '' ? parseInt(populationRaw) : null;
+  const sector      = document.getElementById('drawer-sector').value || null;
+  const location    = document.getElementById('drawer-location').value.trim() || null;
   const notes       = document.getElementById('drawer-notes').value.trim();
   const projectStatus = document.getElementById('drawer-status').value || 'active';
   const priority    = parseInt(document.getElementById('drawer-priority').value) || 3;
@@ -3519,7 +3555,7 @@ async function saveDrawerProject() {
   const expectedCompletion = document.getElementById('drawer-expected').value || null;
   const isActive    = projectStatus !== 'closed';
 
-  const data = { name, description: description||null, region, population, notes: notes||null, priority, stage, expectedCompletion, projectStatus, isActive };
+  const data = { name, description: description||null, region, population, sector, location, notes: notes||null, priority, stage, expectedCompletion, projectStatus, isActive };
 
   if (!IS_CONFIGURED) {
     Object.assign(allProjects[id], data);
@@ -3663,6 +3699,8 @@ function openProjectModal(id) {
   document.getElementById('project-description').value = p ? (p.description || '') : '';
   document.getElementById('project-region').value = p ? (p.region || '') : '';
   document.getElementById('project-population').value = p && p.population != null ? p.population : '';
+  document.getElementById('project-sector').value = p ? (p.sector || '') : '';
+  document.getElementById('project-location').value = p ? (p.location || '') : '';
   document.getElementById('project-notes').value = p ? (p.notes || '') : '';
   document.getElementById('project-priority').value = p ? (p.priority || 3) : 3;
   const pStatus = p ? getProjectStatus(p) : 'active';
@@ -3681,6 +3719,8 @@ async function saveProject() {
   const region = document.getElementById('project-region').value || null;
   const populationRaw = document.getElementById('project-population').value;
   const population = populationRaw !== '' ? parseInt(populationRaw) : null;
+  const sector = document.getElementById('project-sector').value || null;
+  const location = document.getElementById('project-location').value.trim() || null;
   const notes = document.getElementById('project-notes').value.trim();
   const priority = parseInt(document.getElementById('project-priority').value) || 3;
   const stage = document.getElementById('project-stage').value || null;
@@ -3689,7 +3729,7 @@ async function saveProject() {
   const isActive = projectStatus !== 'closed';
   if (!name) { showToast('נא להזין שם פרויקט', 'error'); return; }
 
-  const projectData = { name, description: description || null, region, population, notes: notes || null, priority, stage, expectedCompletion, projectStatus, isActive };
+  const projectData = { name, description: description || null, region, population, sector, location, notes: notes || null, priority, stage, expectedCompletion, projectStatus, isActive };
 
   if (!IS_CONFIGURED) {
     if (editingProjectId) {
@@ -4855,7 +4895,9 @@ async function toggleMikvehPanel(projectId) {
       <div class="mikveh-panel-title">🕍 פרטי המקווה</div>
       <div class="info-row"><span class="info-label">שם:</span><span><strong>${esc(project.name)}</strong></span></div>
       ${project.description ? `<div class="info-row"><span class="info-label">תיאור:</span><span>${esc(project.description)}</span></div>` : ''}
+      ${project.location ? `<div class="info-row"><span class="info-label">מיקום:</span><span>${esc(project.location)}</span></div>` : ''}
       ${project.region ? `<div class="info-row"><span class="info-label">איזור:</span><span>${esc(project.region)}</span></div>` : ''}
+      ${project.sector ? `<div class="info-row"><span class="info-label">מגזר:</span><span>${esc(project.sector)}</span></div>` : ''}
       ${project.population != null ? `<div class="info-row"><span class="info-label">מס׳ תושבים:</span><span>${project.population.toLocaleString()}</span></div>` : ''}
       ${project.notes ? `<div class="info-row"><span class="info-label">הערות:</span><span>${esc(project.notes)}</span></div>` : ''}
       <div class="info-row"><span class="info-label">סטאטוס:</span><span class="tag ${project.isActive?'tag-success':'tag-warning'}">${project.isActive?'פעיל':'סגור'}</span></div>
