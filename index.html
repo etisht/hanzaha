@@ -3045,7 +3045,6 @@ async function renderSignsPage() {
 
     const isAdmin = currentUser.role === 'admin';
     const rows = items.map(([id,c]) => {
-      const proj = allProjects[c.projectId];
       const locked = !!c.sentToDesign && !isAdmin;
       const chk = (field, label, disabled) => {
         const isChecked = !!c[field];
@@ -3064,14 +3063,16 @@ async function renderSignsPage() {
         : '';
       const hungTag = c.signHung ? '<span style="font-size:10px;background:#E8F5E9;color:#2E7D32;border-radius:4px;padding:1px 5px;margin-right:4px;">✓ תלוי</span>' : '';
       return `<tr style="${c.signHung ? 'background:#F0FBF0;' : ''}cursor:pointer;" title="לחץ לפרטים מלאים" onclick="signsOpenDetail('${id}')">
-        <td style="font-size:12px;font-weight:700;color:var(--primary-dark);">${esc(proj?.name||'')}</td>
+        <td style="font-size:13px;">${esc(c.donorNumber||'-')}</td>
+        <td style="font-size:13px;"><strong>${esc(c.donorName||'-')}</strong>
+          ${c.donorPhone ? `<div style="font-size:11px;color:var(--text-muted);">${esc(c.donorPhone)}</div>` : ''}
+        </td>
         <td>
           <strong style="color:var(--primary);">${esc(c.name)}</strong>
           ${imgIcon}${hungTag}
         </td>
-        <td style="font-size:13px;"><strong>${esc(c.donorName||'-')}</strong>
-          ${c.donorPhone ? `<div style="font-size:11px;color:var(--text-muted);">${esc(c.donorPhone)}</div>` : ''}
-        </td>
+        <td style="font-size:12px;">${esc(c.fundraiserName||'-')}</td>
+        <td style="font-size:12px;">${esc(c.fundraiserSubCategory||'-')}</td>
         <td style="font-size:12px;">${esc(c.commemorationNames||'-')}</td>
         ${chk('approvalChecked','אישור הנצחה', false)}
         ${chk('sentToDesign','נשלח לעיצוב', !c.approvalChecked)}
@@ -3084,7 +3085,7 @@ async function renderSignsPage() {
     return statsHtml + `<div class="table-wrap">
       <table class="data-table">
         <thead><tr>
-          <th>מקווה</th><th>הנצחה</th><th>תורם</th><th>נוסח הנצחה</th>
+          <th>מספר תורם</th><th>שם התורם</th><th>הפריט</th><th>מי מכר</th><th>תת מי מכר</th><th>נוסח הנצחה</th>
           <th style="text-align:center;">✅ אישור</th>
           <th style="text-align:center;">🎨 עיצוב</th>
           <th style="text-align:center;">🖨️ הדפסה</th>
