@@ -208,6 +208,7 @@
     .comm-card.status-captured, .comm-card.status-taken { border-color: #FFA726; background: #FFFBF0; }
     .comm-card.status-sold { border-color: #9E9E9E; background: #F7F7F7; opacity: 0.9; }
     .comm-card.status-available-completion { border-color: #42A5F5; background: #E3F2FD; }
+    .comm-card.status-available-mikveh-finished { border-color: #C2185B; border-width: 3px; background: #FCE4EC; }
     .comm-card-project-name {
       font-size: 13px; font-weight: 700; color: var(--primary); margin-bottom: 4px; line-height: 1.3; padding-left: 50px;
       display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
@@ -226,6 +227,10 @@
     .badge-captured { background: #FF9800; color: white; }
     .badge-sold { background: #757575; color: white; }
     .badge-completion { background: #1565C0; color: white; }
+    .badge-mikveh-finished { background: #C2185B; color: white; }
+    .tag-mikveh-finished { background: #C2185B; color: white; font-weight: 700; }
+    .project-card.mikveh-finished { border: 3px solid #C2185B; background: #FFF5F8; }
+    .mikveh-finished-banner { background: #FCE4EC; border: 2px solid #C2185B; border-radius: 10px; padding: 12px 16px; margin-bottom: 18px; font-size: 14px; color: #880E4F; font-weight: 600; line-height: 1.6; }
     .tag-completion { background: #E3F2FD; color: #1565C0; }
     .comm-meta { font-size: 11px; color: var(--text-muted); margin-top: 6px; line-height: 1.5; }
     .comm-actions { margin-top: auto; padding-top: 8px; display: flex; gap: 6px; flex-wrap: wrap; }
@@ -1601,6 +1606,7 @@ async function renderProjectsPage() {
     <select class="filter-select" id="filter-project-status" onchange="filterProjectsGrid()">
       <option value="">כל הסטאטוסים</option>
       <option value="active">● פתוח למכירה</option>
+      <option value="mikveh-finished">${MIKVEH_FINISHED_LABEL}</option>
       <option value="completion">🔵 בהשלמה</option>
       ${isAdmin ? '<option value="closed">⬤ סגור</option>' : ''}
       ${isAdmin ? '<option value="finished">✓ הסתיים</option>' : ''}
@@ -1625,7 +1631,9 @@ function filterProjectsGrid() {
   const populationMinRaw = document.getElementById('filter-project-population-min')?.value || '';
   const populationMin = populationMinRaw !== '' ? parseInt(populationMinRaw) : null;
   let entries = _projectsPageEntries;
-  if (statusFilter) {
+  if (statusFilter === 'mikveh-finished') {
+    entries = entries.filter(([, p]) => isMikvehFinished(p));
+  } else if (statusFilter) {
     entries = entries.filter(([, p]) => getProjectStatus(p) === statusFilter);
   }
   if (textFilter) {
@@ -1677,6 +1685,14 @@ function getProjectStatus(p) {
   return p.isActive ? 'active' : 'closed';
 }
 
+// מקווה שהסתיים: שלב אחרון ("הסתיים"/"סיום") + פתוח למכירה — גמישות במחיר ושלט מיידי
+function isMikvehFinished(p) {
+  if (!p || !p.stage || getProjectStatus(p) !== 'active') return false;
+  const stages = appSettings.projectStages || [];
+  return p.stage === stages[stages.length - 1] || /הסתיים|סיום/.test(p.stage);
+}
+const MIKVEH_FINISHED_LABEL = '🏁 מקווה שהסתיים';
+
 const STAGE_COLOR_PALETTE = ['#5C6BC0', '#F57C00', '#00897B', '#43A047', '#8E24AA', '#EF5350', '#26A69A', '#7E57C2'];
 function getStageColor(stage) {
   const idx = appSettings.projectStages.indexOf(stage);
@@ -1696,10 +1712,11 @@ function renderProjectCard(id, p) {
                     pStatus === 'completion' ? '<span class="tag tag-completion">🔵 להשלמה</span>' :
                     pStatus === 'finished' ? '<span class="tag" style="background:#EDE7F6;color:#4527A0;">✓ הסתיים</span>' :
                     '<span class="tag tag-warning">⬤ סגור</span>';
-  return `<div class="project-card" onclick="showPage('project-detail','${id}')">
+  const mikvehFinished = isMikvehFinished(p);
+  return `<div class="project-card${mikvehFinished ? ' mikveh-finished' : ''}" onclick="showPage('project-detail','${id}')">
     <div class="project-card-name">${esc(p.name)}</div>
     <div style="display:flex;align-items:center;flex-wrap:wrap;gap:6px;margin-bottom:10px;">
-      ${statusTag}
+      ${mikvehFinished ? `<span class="tag tag-mikveh-finished">${MIKVEH_FINISHED_LABEL} · גמישות במחיר</span>` : statusTag}
       ${stageBadge}${completionBadge}${regionBadge}
     </div>
     <div class="progress-bar-wrap"><div class="progress-bar-fill" id="pb-${id}" style="width:0%"></div></div>
@@ -1756,7 +1773,8 @@ async function renderProjectDetailPage() {
       ${projectMetaBits.length ? `<div style="margin-top:${project.description?'6px':'0'};font-size:13px;">${projectMetaBits.join(' · ')}</div>` : ''}
     </div>` : '';
   const closedWarning = pStatus === 'closed' ? '<div style="background:#FFF3E0;border:2px solid #FF9800;border-radius:10px;padding:12px 16px;margin-bottom:18px;font-size:14px;color:#E65100;font-weight:600;">⚠️ פרויקט זה סגור — לא ניתן לתפוס הנצחות חדשות</div>' :
-    pStatus === 'completion' ? '<div style="background:#E3F2FD;border:2px solid #42A5F5;border-radius:10px;padding:12px 16px;margin-bottom:18px;font-size:14px;color:#1565C0;font-weight:600;">🔵 פרויקט להשלמה — ההנצחות הפנויות מסומנות בכחול</div>' : '';
+    pStatus === 'completion' ? '<div style="background:#E3F2FD;border:2px solid #42A5F5;border-radius:10px;padding:12px 16px;margin-bottom:18px;font-size:14px;color:#1565C0;font-weight:600;">🔵 פרויקט להשלמה — ההנצחות הפנויות מסומנות בכחול</div>' :
+    isMikvehFinished(project) ? `<div class="mikveh-finished-banner">${MIKVEH_FINISHED_LABEL} — עדיין יש פריטים פנויים למכירה.<br>ניתן לגלות גמישות במחיר, והתורם מקבל את השלט באופן מיידי. ההנצחות הפנויות מסומנות בוורוד.</div>` : '';
   content.innerHTML = `
     <div class="breadcrumb">
       <a onclick="showPage('projects')">פרויקטים</a>
@@ -1902,9 +1920,10 @@ function renderCommCard(id, c, blockedByWhole) {
   }
 
   const isCompletionAvailable = c.status === 'available' && !isBlocked && !isDisabled && pStatus === 'completion';
-  const cardClass = isDisabled && c.status === 'available' ? 'status-blocked' : (isBlocked ? 'status-blocked' : (isCompletionAvailable ? 'status-available-completion' : `status-${c.status}`));
-  const badgeClass = isDisabled && c.status === 'available' ? 'badge-sold' : (isBlocked ? 'badge-sold' : (isCompletionAvailable ? 'badge-completion' : badgeClasses[c.status]));
-  let badgeLabel = isDisabled && c.status === 'available' ? '🔒 לא למכירה' : (isBlocked ? '🔒 חסומה' : (isCompletionAvailable ? '🔵 להשלמה' : statusLabels[c.status]));
+  const isMikvehFinishedAvailable = c.status === 'available' && !isBlocked && !isDisabled && isMikvehFinished(project);
+  const cardClass = isDisabled && c.status === 'available' ? 'status-blocked' : (isBlocked ? 'status-blocked' : (isCompletionAvailable ? 'status-available-completion' : (isMikvehFinishedAvailable ? 'status-available-mikveh-finished' : `status-${c.status}`)));
+  const badgeClass = isDisabled && c.status === 'available' ? 'badge-sold' : (isBlocked ? 'badge-sold' : (isCompletionAvailable ? 'badge-completion' : (isMikvehFinishedAvailable ? 'badge-mikveh-finished' : badgeClasses[c.status])));
+  let badgeLabel = isDisabled && c.status === 'available' ? '🔒 לא למכירה' : (isBlocked ? '🔒 חסומה' : (isCompletionAvailable ? '🔵 להשלמה' : (isMikvehFinishedAvailable ? '🏁 הסתיים' : statusLabels[c.status])));
   if (isBasicViewer() && c.status !== 'available') badgeLabel = 'לא פנויה';
 
   const cardStyle = (isBlocked || isDisabled) ? ' style="opacity:0.55;border-color:#ccc;"' : '';
@@ -3655,7 +3674,8 @@ function renderAdminProjectsTable() {
 
   const rows = entries.map(([id,p]) => {
     const pStatus = getProjectStatus(p);
-    const statusTag = pStatus === 'active' ? '<span class="tag tag-success">פתוח למכירה</span>' :
+    const statusTag = isMikvehFinished(p) ? `<span class="tag tag-mikveh-finished">${MIKVEH_FINISHED_LABEL}</span>` :
+                      pStatus === 'active' ? '<span class="tag tag-success">פתוח למכירה</span>' :
                       pStatus === 'completion' ? '<span class="tag tag-completion">להשלמה</span>' :
                       pStatus === 'finished' ? '<span class="tag" style="background:#EDE7F6;color:#4527A0;">הסתיים</span>' :
                       '<span class="tag tag-warning">סגור</span>';
@@ -4605,6 +4625,7 @@ function renderSearchPage() {
         <select class="filter-select" id="search-project-status" onchange="runSearch()">
           <option value="">כל הסטאטוסים</option>
           <option value="active">● פתוח למכירה</option>
+          <option value="mikveh-finished">${MIKVEH_FINISHED_LABEL}</option>
           <option value="completion">🔵 בהשלמה</option>
           <option value="closed">⬤ סגור</option>
           <option value="finished">✓ הסתיים</option>
@@ -4705,7 +4726,9 @@ async function runSearch() {
     const pSt = getProjectStatus(p);
 
     // פילטר סטאטוס ידני (כשנבחר מפורשות)
-    if (projectStatusFilter) {
+    if (projectStatusFilter === 'mikveh-finished') {
+      if (!isMikvehFinished(p)) return false;
+    } else if (projectStatusFilter) {
       if (pSt !== projectStatusFilter) return false;
       // גם אם בחרו סגור — non-admin לא יראה סגורים
       if (!isAdmin && pSt === 'closed') return false;
@@ -4827,9 +4850,10 @@ function renderSearchCommCard(id, c) {
     Object.values(allComms).some(w => w.projectId === c.projectId && w.isWholeProject && (w.status === 'captured' || w.status === 'sold'));
 
   const isCompletionAvailable = c.status === 'available' && !isBlocked && isCompletion;
-  const cardClass = isBlocked ? 'status-blocked' : (isCompletionAvailable ? 'status-available-completion' : `status-${c.status}`);
-  const badgeClass = isBlocked ? 'badge-sold' : (isCompletionAvailable ? 'badge-completion' : (badgeClasses[c.status]||''));
-  const badgeLabel = isBlocked ? '🔒 חסומה' : (isCompletionAvailable ? '🔵 להשלמה' : { available: 'פנויה', captured: 'תפוסה', sold: 'נמכרה' }[c.status]);
+  const isMikvehFinishedAvailable = c.status === 'available' && !isBlocked && isMikvehFinished(project);
+  const cardClass = isBlocked ? 'status-blocked' : (isCompletionAvailable ? 'status-available-completion' : (isMikvehFinishedAvailable ? 'status-available-mikveh-finished' : `status-${c.status}`));
+  const badgeClass = isBlocked ? 'badge-sold' : (isCompletionAvailable ? 'badge-completion' : (isMikvehFinishedAvailable ? 'badge-mikveh-finished' : (badgeClasses[c.status]||'')));
+  const badgeLabel = isBlocked ? '🔒 חסומה' : (isCompletionAvailable ? '🔵 להשלמה' : (isMikvehFinishedAvailable ? '🏁 הסתיים' : { available: 'פנויה', captured: 'תפוסה', sold: 'נמכרה' }[c.status]));
   const cardStyleAttr = isBlocked ? ' style="opacity:0.55;border-color:#ccc;"' : '';
 
   const wholeProjectBadge = c.isWholeProject
