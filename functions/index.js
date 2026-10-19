@@ -45,13 +45,17 @@ async function ensurePasswordsMigrated() {
   await db.ref().update(updates);
 }
 
+// התאמה ללא תלות באותיות גדולות/קטנות ורווחים (טלפונים מגדילים אוטומטית את האות הראשונה)
 async function findUserIds(login) {
-  const ids = new Set();
-  for (const field of ['username', 'email']) {
-    const snap = await db.ref('users').orderByChild(field).equalTo(login).once('value');
-    snap.forEach(child => { ids.add(child.key); });
-  }
-  return [...ids];
+  const norm = v => String(v || '').trim().toLowerCase();
+  const target = norm(login);
+  const snap = await db.ref('users').once('value');
+  const ids = [];
+  snap.forEach(child => {
+    const u = child.val();
+    if (norm(u.username) === target || (u.email && norm(u.email) === target)) ids.push(child.key);
+  });
+  return ids;
 }
 
 function attemptsRef(login) {
@@ -104,10 +108,7 @@ exports.saveUser = onCall(async (req) => {
   if (id === req.auth.uid && role !== 'admin') throw new HttpsError('failed-precondition', 'לא ניתן להוריד לעצמך הרשאת אדמין');
   if (id && !(await db.ref(`users/${id}`).once('value')).exists()) throw new HttpsError('not-found', 'המשתמש לא נמצא');
 
-  const dup = await db.ref('users').orderByChild('username').equalTo(username).once('value');
-  let taken = false;
-  dup.forEach(child => { if (child.key !== id) taken = true; });
-  if (taken) throw new HttpsError('already-exists', 'שם המשתמש כבר קיים');
+  if ((await findUserIds(username)).some(other => other !== id)) throw new HttpsError('already-exists', 'שם המשתמש כבר קיים');
 
   const userId = id || db.ref('users').push().key;
   const updates = {
@@ -143,6 +144,16 @@ exports.deleteUser = onCall(async (req) => {
 const DB_INSTANCE = 'hanzaha-d558c-default-rtdb';
 const PUBLIC_FIELDS = ['projectId', 'typeId', 'name', 'price', 'notes', 'isDisabled', 'isWholeProject', 'isFreeItem', 'parentGroupId', 'unitIndex', 'totalUnits'];
 
+// soldReport — עמודות "דוח הנצחות שנמכרו" בלבד, כדי ש-basic יוכל לצפות בדוח
+const SOLD_REPORT_FIELDS = ['projectId', 'typeId', 'name', 'price', 'isWholeProject', 'soldAt', 'donorName', 'donorPhone', 'donorNumber', 'donationNumber', 'captureFundraiserName', 'donationSource'];
+
+function toSoldReport(c) {
+  if (!c || c.status !== 'sold') return null;
+  const out = { status: 'sold' };
+  for (const f of SOLD_REPORT_FIELDS) if (c[f] !== undefined) out[f] = c[f];
+  return out;
+}
+
 function toPublic(c) {
   const out = { status: c.status === 'available' ? 'available' : 'taken' };
   for (const f of PUBLIC_FIELDS) if (c[f] !== undefined) out[f] = c[f];
@@ -152,6 +163,7 @@ function toPublic(c) {
 exports.syncPublicComm = onValueWritten({ ref: '/commemorations/{commId}', instance: DB_INSTANCE }, async (event) => {
   const after = event.data.after.val();
   await db.ref(`commemorationsPublic/${event.params.commId}`).set(after ? toPublic(after) : null);
+  await db.ref(`soldReport/${event.params.commId}`).set(toSoldReport(after));
 });
 
 // בנייה מלאה של commemorationsPublic (לנתונים שקדמו לטריגר). נקרא אוטומטית מאדמין פעם אחת.
@@ -159,8 +171,89 @@ exports.rebuildPublicComms = onCall(async (req) => {
   await requireAdmin(req);
   const snap = await db.ref('commemorations').once('value');
   const pub = {};
-  snap.forEach(child => { pub[child.key] = toPublic(child.val()); });
+  const sold = {};
+  snap.forEach(child => {
+    pub[child.key] = toPublic(child.val());
+    const s = toSoldReport(child.val());
+    if (s) sold[child.key] = s;
+  });
   await db.ref('commemorationsPublic').set(pub);
+  await db.ref('soldReport').set(sold);
   await db.ref('meta/publicCommsSynced').set(true);
+  await db.ref('meta/soldReportSynced').set(true);
   return { count: Object.keys(pub).length };
+});
+
+// ============================================================
+//  Webhooks יוצאים — הודעה למערכת חיצונית על פתיחה ושינוי סטאטוס של פרויקטים והנצחות.
+//  נשלחים רק שדות מרשימה מותרת (בלי פרטי תורם / תופס / מוכר). תיעוד הפורמט: WEBHOOKS.md
+//  הגדרה: WEBHOOK_URL בקובץ functions/.env, והסוד לחתימה: firebase functions:secrets:set WEBHOOK_SECRET
+// ============================================================
+const { defineString, defineSecret } = require('firebase-functions/params');
+const { logger } = require('firebase-functions');
+
+const WEBHOOK_URL = defineString('WEBHOOK_URL', { default: '' });
+const WEBHOOK_SECRET = defineSecret('WEBHOOK_SECRET');
+
+const WEBHOOK_PROJECT_FIELDS = ['name', 'description', 'region', 'population', 'sector', 'location', 'notes', 'priority', 'stage', 'expectedCompletion', 'createdAt', 'typePrices'];
+const WEBHOOK_COMM_FIELDS = ['projectId', 'typeId', 'name', 'price', 'notes', 'isDisabled', 'isWholeProject', 'isFreeItem', 'parentGroupId', 'unitIndex', 'totalUnits', 'capturedAt', 'captureExpiry', 'soldAt'];
+
+function pick(obj, fields) {
+  const out = {};
+  for (const f of fields) if (obj[f] !== undefined && obj[f] !== null) out[f] = obj[f];
+  return out;
+}
+
+// אותה לוגיקה כמו getProjectStatus בצד הלקוח
+const projectStatusOf = p => p.projectStatus || (p.isActive ? 'active' : 'closed');
+
+async function sendWebhook(eventId, type, data) {
+  const url = WEBHOOK_URL.value();
+  if (!url) return;
+  const body = JSON.stringify({ id: eventId, type, occurredAt: new Date().toISOString(), data });
+  const timestamp = String(Math.floor(Date.now() / 1000));
+  const signature = crypto.createHmac('sha256', WEBHOOK_SECRET.value()).update(`${timestamp}.${body}`).digest('hex');
+  const res = await fetch(url, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'X-Webhook-Id': eventId, 'X-Webhook-Timestamp': timestamp, 'X-Webhook-Signature': `sha256=${signature}` },
+    body,
+    signal: AbortSignal.timeout(10000),
+  });
+  // 5xx / 429 — זריקת שגיאה גורמת ל-Firebase לנסות שוב. 4xx אחר — שגיאה קבועה, לא מנסים שוב.
+  if (res.status >= 500 || res.status === 429) throw new Error(`webhook ${type} failed: HTTP ${res.status}`);
+  if (!res.ok) logger.error(`webhook ${type} rejected: HTTP ${res.status}`, { eventId, response: await res.text().catch(() => '') });
+}
+
+const WEBHOOK_TRIGGER_OPTS = { instance: DB_INSTANCE, retry: true, secrets: [WEBHOOK_SECRET] };
+
+exports.projectWebhook = onValueWritten({ ref: '/projects/{projectId}', ...WEBHOOK_TRIGGER_OPTS }, async (event) => {
+  const before = event.data.before.val();
+  const after = event.data.after.val();
+  if (!after) return;
+  const project = { id: event.params.projectId, status: projectStatusOf(after), ...pick(after, WEBHOOK_PROJECT_FIELDS) };
+
+  if (!before) return sendWebhook(event.id, 'project.created', { project });
+  if (projectStatusOf(before) !== project.status) {
+    await sendWebhook(`${event.id}-status`, 'project.status_changed', { project, previousStatus: projectStatusOf(before) });
+  }
+  if ((before.stage || null) !== (after.stage || null)) {
+    await sendWebhook(`${event.id}-stage`, 'project.stage_changed', { project, previousStage: before.stage || null });
+  }
+});
+
+exports.commemorationWebhook = onValueWritten({ ref: '/commemorations/{commId}', ...WEBHOOK_TRIGGER_OPTS }, async (event) => {
+  const before = event.data.before.val();
+  const after = event.data.after.val();
+  if (!after) return;
+  const isCreate = !before;
+  if (!isCreate && before.status === after.status) return;
+
+  const [projectName, typeName] = await Promise.all([
+    after.projectId ? db.ref(`projects/${after.projectId}/name`).once('value').then(s => s.val()) : null,
+    after.typeId ? db.ref(`commemorationTypes/${after.typeId}/name`).once('value').then(s => s.val()) : null,
+  ]);
+  const commemoration = { id: event.params.commId, status: after.status, ...pick(after, WEBHOOK_COMM_FIELDS), projectName, typeName };
+
+  if (isCreate) return sendWebhook(event.id, 'commemoration.created', { commemoration });
+  return sendWebhook(event.id, 'commemoration.status_changed', { commemoration, previousStatus: before.status });
 });
