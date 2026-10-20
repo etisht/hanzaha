@@ -5475,7 +5475,13 @@ if ('serviceWorker' in navigator) {
 .nsw-fab-icon{display:grid;place-items:center;transition:transform .45s var(--nsw-spring),opacity .2s}
 .nsw-fab[aria-expanded="true"] .nsw-fab-icon{transform:rotate(90deg)}
 .nsw-fab::after{content:"";position:absolute;inset:0;border-radius:50%;box-shadow:0 0 0 0 rgba(214,84,154,.45);animation:nsw-ping 2.8s var(--nsw-out) 1s 2}
+.nsw-fab[data-unread="true"]::after{box-shadow:0 0 0 0 rgba(214,84,154,.6);animation:nsw-ping 1.8s var(--nsw-out) infinite}
 @keyframes nsw-ping{70%{box-shadow:0 0 0 14px rgba(214,84,154,0)}100%{box-shadow:0 0 0 0 rgba(214,84,154,0)}}
+.nsw-badge{position:absolute;top:-4px;inset-inline-start:-4px;min-width:22px;height:22px;padding:0 6px;border-radius:999px;background:#e0245e;color:#fff;font-size:12px;font-weight:700;line-height:22px;text-align:center;border:2px solid var(--nsw-surface);box-shadow:0 2px 6px rgba(0,0,0,.2);animation:nsw-pop .5s var(--nsw-spring) both;pointer-events:none}
+.nsw-tab-count{display:inline-block;min-width:18px;height:18px;padding:0 5px;margin-inline-start:6px;border-radius:999px;background:#e0245e;color:#fff;font-size:11px;font-weight:700;line-height:18px;vertical-align:1px}
+.nsw-ticket[data-unread="true"]{border-color:rgba(224,36,94,.45);background:linear-gradient(0deg,rgba(224,36,94,.04),rgba(224,36,94,.04)),var(--nsw-surface)}
+.nsw-new{display:inline-flex;align-items:center;gap:4px;font-size:11px;font-weight:700;color:#c21d52}
+.nsw-new::before{content:"";width:7px;height:7px;border-radius:50%;background:#e0245e}
 .nsw-panel{position:fixed;inset-inline-end:24px;inset-block-end:92px;z-index:9999;width:384px;max-height:min(640px,calc(100vh - 120px));display:flex;flex-direction:column;background:var(--nsw-surface);color:var(--nsw-text);border:1px solid var(--nsw-border);border-radius:22px;box-shadow:0 30px 70px -20px rgba(28,28,96,.4),0 4px 14px rgba(28,28,96,.08);overflow:hidden;transform-origin:bottom left;animation:nsw-in .38s var(--nsw-out) both}
 [dir="ltr"] .nsw-panel{transform-origin:bottom right}
 @keyframes nsw-in{from{opacity:0;transform:translateY(12px) scale(.94)}}
@@ -5604,6 +5610,10 @@ if ('serviceWorker' in navigator) {
   let selectedType = 'question';
   let lastTicketNumber = null;
   let lastShotFailed = false;
+  // Tickets with staff activity (reply / status change) this reporter hasn't
+  // opened yet — drives the count badge + pulse on the button.
+  let unread = 0;
+  const UNREAD_POLL_MS = 60000;
 
   function reporterExternalId() {
     return (typeof currentUser !== 'undefined' && currentUser && currentUser.username) ? 'hanzaha:' + currentUser.username : null;
@@ -5631,9 +5641,25 @@ if ('serviceWorker' in navigator) {
   }
 
   function setFabIcon(open) {
-    btn.innerHTML = '<span class="nsw-fab-icon">' + icon(open ? ICONS.close : ICONS.help, 26) + '</span>';
+    btn.innerHTML = '<span class="nsw-fab-icon">' + icon(open ? ICONS.close : ICONS.help, 26) + '</span>' +
+      (unread > 0 ? '<span class="nsw-badge" aria-hidden="true">' + (unread > 9 ? '9+' : unread) + '</span>' : '');
     btn.setAttribute('aria-expanded', open ? 'true' : 'false');
-    btn.setAttribute('aria-label', open ? 'סגירת מרכז השירות' : 'מרכז השירות');
+    btn.setAttribute('aria-label', open ? 'סגירת מרכז השירות' : unread > 0 ? 'מרכז השירות — ' + unread + ' עדכונים חדשים בפניות שלך' : 'מרכז השירות');
+    btn.title = unread > 0 ? unread + ' עדכונים חדשים בפניות שלך' : 'מרכז השירות';
+    btn.dataset.unread = String(unread > 0);
+  }
+
+  async function refreshUnread() {
+    const repId = reporterExternalId();
+    if (!repId || btn.hidden) return;
+    try {
+      const n = await apiFetch('/service/external-tickets/unread-count?reporterExternalId=' + encodeURIComponent(repId));
+      if (typeof n !== 'number' || n === unread) return;
+      unread = n;
+      setFabIcon(!panel.hidden);
+      const tabCount = panel.querySelector('[data-tab="mine"]');
+      if (tabCount) tabCount.innerHTML = 'הפניות שלי' + (unread > 0 ? '<span class="nsw-tab-count">' + unread + '</span>' : '');
+    } catch (err) { /* badge is best-effort */ }
   }
 
   function render() {
@@ -5646,7 +5672,7 @@ if ('serviceWorker' in navigator) {
       '<div class="nsw-body">' +
         '<div class="nsw-seg" role="tablist">' +
           '<button type="button" data-tab="new" aria-pressed="' + (tab === 'new') + '">פנייה חדשה</button>' +
-          '<button type="button" data-tab="mine" aria-pressed="' + (tab === 'mine') + '">הפניות שלי</button>' +
+          '<button type="button" data-tab="mine" aria-pressed="' + (tab === 'mine') + '">הפניות שלי' + (unread > 0 ? '<span class="nsw-tab-count">' + unread + '</span>' : '') + '</button>' +
         '</div>' +
         '<div id="neyra-svc-body" style="display:flex;flex-direction:column;gap:14px"></div>' +
       '</div>';
@@ -5818,11 +5844,11 @@ if ('serviceWorker' in navigator) {
       const closed = t.status === 'resolved_closed';
       const comments = (t.comments || []).map((c) => '<div class="nsw-bubble">' + esc(c.body) + '</div>').join('');
       return (
-        '<div class="nsw-ticket" data-open="false" data-id="' + t.id + '">' +
+        '<div class="nsw-ticket" data-open="false" data-id="' + t.id + '" data-unread="' + !!t.reporterUnread + '">' +
           '<button type="button" class="nsw-ticket-head" data-toggle="' + t.id + '" aria-expanded="false">' +
             '<span class="nsw-ticket-ic">' + icon(TYPE_ICON[t.type] || ICONS.question, 16) + '</span>' +
             '<span class="nsw-ticket-main">' +
-              '<span class="nsw-ticket-title">#' + t.number + ' · ' + (TYPE_LABELS[t.type] || t.type) + '</span>' +
+              '<span class="nsw-ticket-title">#' + t.number + ' · ' + (TYPE_LABELS[t.type] || t.type) + (t.reporterUnread ? '<span class="nsw-new">עדכון חדש</span>' : '') + '</span>' +
               '<p class="nsw-ticket-desc">' + esc(t.description) + '</p>' +
             '</span>' +
             statusBadge(t.status) +
@@ -5855,6 +5881,15 @@ if ('serviceWorker' in navigator) {
       exp.hidden = !opening;
       card.dataset.open = String(opening);
       el.setAttribute('aria-expanded', String(opening));
+      if (opening && card.dataset.unread === 'true') {
+        card.dataset.unread = 'false';
+        const badge = card.querySelector('.nsw-new');
+        if (badge) badge.remove();
+        apiFetch('/service/external-tickets/' + id + '/seen', {
+          method: 'POST',
+          body: JSON.stringify({ reporterExternalId: repId }),
+        }).then(refreshUnread).catch(() => {});
+      }
       if (opening && exp.dataset.hasScreenshot === '1' && !exp.dataset.screenshotLoaded) {
         exp.dataset.screenshotLoaded = '1';
         loadTicketScreenshot(id);
@@ -5890,16 +5925,19 @@ if ('serviceWorker' in navigator) {
     }));
   }
 
-  function showPanel() { tab = 'new'; lastTicketNumber = null; render(); panel.hidden = false; setFabIcon(true); }
+  function showPanel() { tab = unread > 0 ? 'mine' : 'new'; lastTicketNumber = null; render(); panel.hidden = false; setFabIcon(true); }
   function hidePanel() { panel.hidden = true; setFabIcon(false); }
 
   setFabIcon(false);
   btn.addEventListener('click', () => { if (panel.hidden) showPanel(); else hidePanel(); });
   document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && !panel.hidden) hidePanel(); });
+  // Poll while the page is open, and re-check as soon as the tab regains focus.
+  setInterval(() => { if (!document.hidden) refreshUnread(); }, UNREAD_POLL_MS);
+  document.addEventListener('visibilitychange', () => { if (!document.hidden) refreshUnread(); });
 
   window.neyraServiceWidget = {
-    show: function () { btn.hidden = false; },
-    hide: function () { btn.hidden = true; hidePanel(); },
+    show: function () { btn.hidden = false; refreshUnread(); },
+    hide: function () { btn.hidden = true; unread = 0; hidePanel(); },
   };
 
   // Hook into the app's existing login/logout flow (startApp / doLogout,
