@@ -872,6 +872,10 @@
       <input class="form-control" id="project-name" placeholder="שם הפרויקט">
     </div>
     <div class="form-group">
+      <label>מזהה CRM</label>
+      <input class="form-control" id="project-crm-id" placeholder="מזהה הפרויקט ב-CRM (רשות)" dir="ltr">
+    </div>
+    <div class="form-group">
       <label>תיאור הפרויקט</label>
       <textarea class="form-control" id="project-description" rows="2" placeholder="תיאור קצר של הפרויקט (רשות)" style="resize:vertical;"></textarea>
     </div>
@@ -3666,6 +3670,7 @@ function renderDrawerView() {
       <div class="drawer-row"><span class="drawer-lbl">עדיפות:</span> <strong>${p.priority||3}</strong> — ${priorityLabels[p.priority||3]||''}</div>
       <div class="drawer-row"><span class="drawer-lbl">שלב נוכחי:</span> ${p.stage ? `<span style="background:${getStageColor(p.stage)};color:white;padding:2px 10px;border-radius:20px;font-size:12px;font-weight:700;">${esc(p.stage)}</span>` : '<span style="color:var(--text-muted)">לא הוגדר</span>'}</div>
       <div class="drawer-row"><span class="drawer-lbl">צפי לסיום:</span> ${p.expectedCompletion ? `<strong>${esc(p.expectedCompletion)}</strong>` : '<span style="color:var(--text-muted)">לא הוגדר</span>'}</div>
+      <div class="drawer-row"><span class="drawer-lbl">מזהה CRM:</span> ${p.crmId ? `<strong dir="ltr">${esc(p.crmId)}</strong>` : '<span style="color:var(--text-muted)">לא הוגדר</span>'}</div>
       <div class="drawer-row"><span class="drawer-lbl">נוצר:</span> ${p.createdAt ? new Date(p.createdAt).toLocaleDateString('he-IL') : '—'}</div>
     </div>
 
@@ -3747,6 +3752,10 @@ function startDrawerEdit() {
     <div class="form-group">
       <label>שם הפרויקט <span class="req">*</span></label>
       <input class="form-control" id="drawer-name" value="${esc(p.name)}">
+    </div>
+    <div class="form-group">
+      <label>מזהה CRM</label>
+      <input class="form-control" id="drawer-crm-id" value="${esc(p.crmId||'')}" placeholder="מזהה הפרויקט ב-CRM (רשות)" dir="ltr">
     </div>
     <div class="form-group">
       <label>תיאור הפרויקט</label>
@@ -3833,9 +3842,12 @@ async function saveDrawerProject() {
   const priority    = parseInt(document.getElementById('drawer-priority').value) || 3;
   const stage       = document.getElementById('drawer-stage').value || null;
   const expectedCompletion = document.getElementById('drawer-expected').value || null;
+  const crmId       = document.getElementById('drawer-crm-id').value.trim() || null;
   const isActive    = projectStatus !== 'closed';
 
-  const data = { name, description: description||null, region, population, sector, location, notes: notes||null, priority, stage, expectedCompletion, projectStatus, isActive };
+  const data = { name, description: description||null, region, population, sector, location, notes: notes||null, priority, stage, expectedCompletion, projectStatus, isActive, crmId };
+  // crmIdSource מבדיל עדכון מכאן מעדכון שהגיע מהאתר המחובר, כדי שה-webhook לא יחזיר לו את השינוי שלו
+  if (crmId !== (allProjects[id].crmId || null)) data.crmIdSource = 'internal';
 
   if (!IS_CONFIGURED) {
     Object.assign(allProjects[id], data);
@@ -3978,6 +3990,7 @@ function openProjectModal(id) {
   document.getElementById('project-modal-title').textContent = id ? '✏️ עריכת פרויקט' : '➕ פרויקט חדש';
   const p = id ? allProjects[id] : null;
   document.getElementById('project-name').value = p ? p.name : '';
+  document.getElementById('project-crm-id').value = p ? (p.crmId || '') : '';
   document.getElementById('project-description').value = p ? (p.description || '') : '';
   document.getElementById('project-region').value = p ? (p.region || '') : '';
   document.getElementById('project-population').value = p && p.population != null ? p.population : '';
@@ -4008,10 +4021,13 @@ async function saveProject() {
   const stage = document.getElementById('project-stage').value || null;
   const expectedCompletion = document.getElementById('project-expected-completion').value || null;
   const projectStatus = document.getElementById('project-status').value || 'active';
+  const crmId = document.getElementById('project-crm-id').value.trim() || null;
   const isActive = projectStatus !== 'closed';
   if (!name) { showToast('נא להזין שם פרויקט', 'error'); return; }
 
-  const projectData = { name, description: description || null, region, population, sector, location, notes: notes || null, priority, stage, expectedCompletion, projectStatus, isActive };
+  const projectData = { name, description: description || null, region, population, sector, location, notes: notes || null, priority, stage, expectedCompletion, projectStatus, isActive, crmId };
+  const prevCrmId = editingProjectId ? (allProjects[editingProjectId].crmId || null) : null;
+  if (crmId !== prevCrmId) projectData.crmIdSource = 'internal';
 
   if (!IS_CONFIGURED) {
     if (editingProjectId) {

@@ -3,7 +3,7 @@
 //  סיסמאות נשמרות רק כ-hash ב-userSecrets/{uid}, נתיב שחסום לכל לקוח בכללי ה-DB.
 //  ה-uid ב-Firebase Auth זהה למפתח המשתמש ב-users/{uid}, כך שהפניות קיימות (capturedBy וכו') נשמרות.
 // ============================================================
-const { onCall, HttpsError } = require('firebase-functions/v2/https');
+const { onCall, onRequest, HttpsError } = require('firebase-functions/v2/https');
 const { onValueWritten } = require('firebase-functions/v2/database');
 const { setGlobalOptions } = require('firebase-functions/v2');
 const { initializeApp } = require('firebase-admin/app');
@@ -195,7 +195,7 @@ const { logger } = require('firebase-functions');
 const WEBHOOK_URL = defineString('WEBHOOK_URL', { default: '' });
 const WEBHOOK_SECRET = defineSecret('WEBHOOK_SECRET');
 
-const WEBHOOK_PROJECT_FIELDS = ['name', 'description', 'region', 'population', 'sector', 'location', 'notes', 'priority', 'stage', 'expectedCompletion', 'createdAt', 'typePrices'];
+const WEBHOOK_PROJECT_FIELDS = ['name', 'description', 'region', 'population', 'sector', 'location', 'notes', 'priority', 'stage', 'expectedCompletion', 'createdAt', 'typePrices', 'crmId'];
 const WEBHOOK_COMM_FIELDS = ['projectId', 'typeId', 'name', 'price', 'notes', 'isDisabled', 'isWholeProject', 'isFreeItem', 'parentGroupId', 'unitIndex', 'totalUnits', 'capturedAt', 'captureExpiry', 'soldAt'];
 
 function pick(obj, fields) {
@@ -239,6 +239,10 @@ exports.projectWebhook = onValueWritten({ ref: '/projects/{projectId}', ...WEBHO
   if ((before.stage || null) !== (after.stage || null)) {
     await sendWebhook(`${event.id}-stage`, 'project.stage_changed', { project, previousStage: before.stage || null });
   }
+  // שינוי שהגיע מהאתר המחובר (crmIdSource = external) לא נשלח אליו בחזרה
+  if ((before.crmId || null) !== (after.crmId || null) && after.crmIdSource !== 'external') {
+    await sendWebhook(`${event.id}-crm`, 'project.crm_id_changed', { project, previousCrmId: before.crmId || null });
+  }
 });
 
 exports.commemorationWebhook = onValueWritten({ ref: '/commemorations/{commId}', ...WEBHOOK_TRIGGER_OPTS }, async (event) => {
@@ -248,12 +252,44 @@ exports.commemorationWebhook = onValueWritten({ ref: '/commemorations/{commId}',
   const isCreate = !before;
   if (!isCreate && before.status === after.status) return;
 
-  const [projectName, typeName] = await Promise.all([
+  const [projectName, typeName, projectCrmId] = await Promise.all([
     after.projectId ? db.ref(`projects/${after.projectId}/name`).once('value').then(s => s.val()) : null,
     after.typeId ? db.ref(`commemorationTypes/${after.typeId}/name`).once('value').then(s => s.val()) : null,
+    after.projectId ? db.ref(`projects/${after.projectId}/crmId`).once('value').then(s => s.val()) : null,
   ]);
-  const commemoration = { id: event.params.commId, status: after.status, ...pick(after, WEBHOOK_COMM_FIELDS), projectName, typeName };
+  const commemoration = { id: event.params.commId, status: after.status, ...pick(after, WEBHOOK_COMM_FIELDS), projectName, typeName, ...(projectCrmId ? { projectCrmId } : {}) };
 
   if (isCreate) return sendWebhook(event.id, 'commemoration.created', { commemoration });
   return sendWebhook(event.id, 'commemoration.status_changed', { commemoration, previousStatus: before.status });
+});
+
+// ============================================================
+//  Webhook נכנס — האתר המחובר מעדכן את מזהה ה-CRM של פרויקט.
+//  POST עם { projectId, crmId }, חתום באותו סוד ובאותה שיטה כמו ה-webhooks היוצאים. תיעוד: WEBHOOKS.md
+// ============================================================
+const MAX_CRM_ID_LENGTH = 100;
+
+function verifyInboundSignature(req) {
+  const timestamp = String(req.get('x-webhook-timestamp') || '');
+  const signature = String(req.get('x-webhook-signature') || '');
+  if (!timestamp || Math.abs(Date.now() / 1000 - Number(timestamp)) >= 300) return false;
+  const expected = 'sha256=' + crypto.createHmac('sha256', WEBHOOK_SECRET.value()).update(`${timestamp}.${req.rawBody}`).digest('hex');
+  return expected.length === signature.length && crypto.timingSafeEqual(Buffer.from(expected), Buffer.from(signature));
+}
+
+exports.updateProjectCrmId = onRequest({ secrets: [WEBHOOK_SECRET] }, async (req, res) => {
+  if (req.method !== 'POST') return res.status(405).json({ error: 'method not allowed' });
+  if (!verifyInboundSignature(req)) return res.status(401).json({ error: 'invalid signature' });
+
+  const projectId = typeof req.body?.projectId === 'string' ? req.body.projectId : '';
+  const raw = req.body?.crmId;
+  if (!projectId || /[.#$\[\]\/]/.test(projectId)) return res.status(400).json({ error: 'missing or invalid projectId' });
+  if (raw != null && typeof raw !== 'string' && typeof raw !== 'number') return res.status(400).json({ error: 'crmId must be a string or null' });
+  const crmId = raw == null ? null : String(raw).trim() || null;
+  if (crmId && crmId.length > MAX_CRM_ID_LENGTH) return res.status(400).json({ error: `crmId longer than ${MAX_CRM_ID_LENGTH} characters` });
+
+  const ref = db.ref(`projects/${projectId}`);
+  if (!(await ref.child('name').once('value')).exists()) return res.status(404).json({ error: 'project not found' });
+  await ref.update({ crmId, crmIdSource: 'external' });
+  return res.status(200).json({ ok: true, projectId, crmId });
 });
