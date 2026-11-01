@@ -5567,6 +5567,9 @@ if ('serviceWorker' in navigator) {
 .nsw-ticket[data-open="true"] .nsw-chev{transform:rotate(180deg)}
 .nsw-ticket-body{display:flex;flex-direction:column;gap:8px;padding:0 14px 14px}
 .nsw-bubble{align-self:flex-start;max-width:88%;font-size:13px;line-height:1.45;background:var(--nsw-sunken);border-radius:14px 14px 14px 4px;padding:8px 12px}
+.nsw-bubble-staff{align-self:flex-end;background:var(--nsw-wash);border-radius:14px 14px 4px 14px}
+.nsw-bubble-author{display:block;font-size:11px;font-weight:700;color:var(--nsw-muted);margin-bottom:2px}
+.nsw-bubble-staff .nsw-bubble-author{color:var(--nsw-ink)}
 .nsw-reply{display:flex;gap:8px}
 .nsw-shot{display:block;border-radius:12px;overflow:hidden;border:1px solid var(--nsw-border)}
 .nsw-shot img{display:block;width:100%;height:auto}
@@ -5858,7 +5861,11 @@ if ('serviceWorker' in navigator) {
 
     listEl.innerHTML = tickets.map((t) => {
       const closed = t.status === 'resolved_closed';
-      const comments = (t.comments || []).map((c) => '<div class="nsw-bubble">' + esc(c.body) + '</div>').join('');
+      const comments = (t.comments || []).map((c) => {
+        const staff = c.authorSide === 'staff';
+        const author = staff ? 'צוות Neyra' : (c.authorName || 'את/ה');
+        return '<div class="nsw-bubble' + (staff ? ' nsw-bubble-staff' : '') + '"><span class="nsw-bubble-author">' + esc(author) + '</span>' + esc(c.body) + '</div>';
+      }).join('');
       return (
         '<div class="nsw-ticket" data-open="false" data-id="' + t.id + '" data-unread="' + !!t.reporterUnread + '">' +
           '<button type="button" class="nsw-ticket-head" data-toggle="' + t.id + '" aria-expanded="false">' +
