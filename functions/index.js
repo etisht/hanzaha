@@ -250,17 +250,24 @@ exports.commemorationWebhook = onValueWritten({ ref: '/commemorations/{commId}',
   const after = event.data.after.val();
   if (!after) return;
   const isCreate = !before;
-  if (!isCreate && before.status === after.status) return;
+  const statusChanged = !isCreate && before.status !== after.status;
+  const visibilityChanged = !isCreate && !!before.hiddenFromSite !== !!after.hiddenFromSite;
+  if (!isCreate && !statusChanged && !visibilityChanged) return;
 
   const [projectName, typeName, projectCrmId] = await Promise.all([
     after.projectId ? db.ref(`projects/${after.projectId}/name`).once('value').then(s => s.val()) : null,
     after.typeId ? db.ref(`commemorationTypes/${after.typeId}/name`).once('value').then(s => s.val()) : null,
     after.projectId ? db.ref(`projects/${after.projectId}/crmId`).once('value').then(s => s.val()) : null,
   ]);
-  const commemoration = { id: event.params.commId, status: after.status, ...pick(after, WEBHOOK_COMM_FIELDS), projectName, typeName, ...(projectCrmId ? { projectCrmId } : {}) };
+  const commemoration = { id: event.params.commId, status: after.status, ...pick(after, WEBHOOK_COMM_FIELDS), hiddenFromSite: !!after.hiddenFromSite, projectName, typeName, ...(projectCrmId ? { projectCrmId } : {}) };
 
   if (isCreate) return sendWebhook(event.id, 'commemoration.created', { commemoration });
-  return sendWebhook(event.id, 'commemoration.status_changed', { commemoration, previousStatus: before.status });
+  if (statusChanged) {
+    await sendWebhook(event.id, 'commemoration.status_changed', { commemoration, previousStatus: before.status });
+  }
+  if (visibilityChanged) {
+    await sendWebhook(`${event.id}-visibility`, 'commemoration.visibility_changed', { commemoration, previousHiddenFromSite: !!before.hiddenFromSite });
+  }
 });
 
 // ============================================================
