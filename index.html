@@ -2473,19 +2473,43 @@ async function migrateLegacyImages() {
   await db.ref('meta/imagesMigrated').set(true);
 }
 
+// מקטין תמונה כך שהצלע הארוכה תהיה עד maxSide פיקסלים ומחזיר data URL של JPEG
+function compressImageFile(file, maxSide, quality) {
+  return new Promise((resolve, reject) => {
+    const url = URL.createObjectURL(file);
+    const img = new Image();
+    img.onload = () => {
+      URL.revokeObjectURL(url);
+      const scale = Math.min(1, maxSide / Math.max(img.naturalWidth, img.naturalHeight));
+      const w = Math.max(1, Math.round(img.naturalWidth * scale));
+      const h = Math.max(1, Math.round(img.naturalHeight * scale));
+      const canvas = document.createElement('canvas');
+      canvas.width = w; canvas.height = h;
+      const ctx = canvas.getContext('2d');
+      ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, w, h); // רקע לבן לתמונות PNG שקופות
+      ctx.drawImage(img, 0, 0, w, h);
+      resolve(canvas.toDataURL('image/jpeg', quality));
+    };
+    img.onerror = () => { URL.revokeObjectURL(url); reject(new Error('decode failed')); };
+    img.src = url;
+  });
+}
+
 async function uploadCommImage(commId, input) {
   const file = input.files[0];
+  input.value = ''; // כדי שבחירה חוזרת של אותו קובץ תפעיל שוב את ההעלאה
   if (!file) return;
-  if (file.size > 3 * 1024 * 1024) { showToast('הקובץ גדול מדי (מקסימום 3MB)', 'error'); return; }
   showToast('שומר תמונה...', '');
   try {
-    // Convert to base64 data URL and store in Firebase RTDB (avoids Storage config/CORS issues)
-    const base64url = await new Promise((resolve, reject) => {
-      const reader = new FileReader();
-      reader.onload = e => resolve(e.target.result);
-      reader.onerror = reject;
-      reader.readAsDataURL(file);
-    });
+    // מקטינים ודוחסים את התמונה בדפדפן (צילומי טלפון שוקלים לרוב 3–10MB), ושומרים כ-base64 ב-RTDB
+    let base64url;
+    try {
+      base64url = await compressImageFile(file, 1600, 0.82);
+    } catch (decodeErr) {
+      showToast('לא ניתן לקרוא את התמונה. אם זו תמונת iPhone (HEIC) — שמרו אותה כ-JPG ונסו שוב', 'error', 7000);
+      return;
+    }
+    if (base64url.length > 4 * 1024 * 1024) { showToast('התמונה גדולה מדי גם אחרי דחיסה', 'error'); return; }
     if (IS_CONFIGURED) {
       await db.ref(`commemorationImages/${commId}`).set(base64url);
       await db.ref(`commemorations/${commId}`).update({ hasImage: true, imageUrl: null });
@@ -5107,14 +5131,42 @@ async function runSearch() {
     return 0;
   });
 
+  _lastSearchResults = filtered;
+
   resultsEl.innerHTML =
-    `<div style="margin-bottom:14px;font-size:14px;color:var(--text-muted);">
-      נמצאו <strong style="color:var(--primary-dark);">${filtered.length}</strong> הנצחות פנויות
-      <span style="color:var(--text-muted);font-size:12px;">· ממוין: ${sortLabels[sortMode]||''}</span>
+    `<div style="margin-bottom:14px;font-size:14px;color:var(--text-muted);display:flex;align-items:center;gap:12px;flex-wrap:wrap;">
+      <span>נמצאו <strong style="color:var(--primary-dark);">${filtered.length}</strong> הנצחות פנויות
+      <span style="color:var(--text-muted);font-size:12px;">· ממוין: ${sortLabels[sortMode]||''}</span></span>
+      <button class="btn btn-ghost btn-sm" onclick="copySearchResultsAsText()">📋 העתק כטקסט</button>
     </div>
     <div class="comms-grid">` +
     filtered.map(([id,c]) => renderSearchCommCard(id,c)).join('') +
     `</div>`;
+}
+
+let _lastSearchResults = [];
+
+async function copySearchResultsAsText() {
+  if (!_lastSearchResults.length) { showToast('אין הנצחות להעתקה', 'error'); return; }
+  const lines = _lastSearchResults.map(([, c]) => {
+    const p = allProjects[c.projectId] || {};
+    const place = p.location || p.region || '';
+    return [p.name || '', place, c.name || '', `₪${(c.price || 0).toLocaleString()}`]
+      .filter(Boolean).join(' - ');
+  });
+  const text = lines.join('\n');
+  try {
+    await navigator.clipboard.writeText(text);
+  } catch (e) {
+    const ta = document.createElement('textarea');
+    ta.value = text;
+    ta.style.position = 'fixed'; ta.style.opacity = '0';
+    document.body.appendChild(ta);
+    ta.select();
+    document.execCommand('copy');
+    ta.remove();
+  }
+  showToast(`הועתקו ${lines.length} הנצחות ✓`, 'success');
 }
 
 function renderSearchCommCard(id, c) {
