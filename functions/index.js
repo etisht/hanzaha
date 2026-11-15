@@ -229,7 +229,12 @@ const WEBHOOK_TRIGGER_OPTS = { instance: DB_INSTANCE, retry: true, secrets: [WEB
 exports.projectWebhook = onValueWritten({ ref: '/projects/{projectId}', ...WEBHOOK_TRIGGER_OPTS }, async (event) => {
   const before = event.data.before.val();
   const after = event.data.after.val();
-  if (!after) return;
+  if (!after && !before) return;
+  // מחיקה — שולחים את נתוני הפרויקט כפי שהיו לפני המחיקה
+  if (!after) {
+    const project = { id: event.params.projectId, status: projectStatusOf(before), ...pick(before, WEBHOOK_PROJECT_FIELDS) };
+    return sendWebhook(event.id, 'project.deleted', { project });
+  }
   const project = { id: event.params.projectId, status: projectStatusOf(after), ...pick(after, WEBHOOK_PROJECT_FIELDS) };
 
   if (!before) return sendWebhook(event.id, 'project.created', { project });
@@ -248,19 +253,23 @@ exports.projectWebhook = onValueWritten({ ref: '/projects/{projectId}', ...WEBHO
 exports.commemorationWebhook = onValueWritten({ ref: '/commemorations/{commId}', ...WEBHOOK_TRIGGER_OPTS }, async (event) => {
   const before = event.data.before.val();
   const after = event.data.after.val();
-  if (!after) return;
+  if (!after && !before) return;
   const isCreate = !before;
-  const statusChanged = !isCreate && before.status !== after.status;
-  const visibilityChanged = !isCreate && !!before.hiddenFromSite !== !!after.hiddenFromSite;
-  if (!isCreate && !statusChanged && !visibilityChanged) return;
+  const isDelete = !after;
+  const statusChanged = !isCreate && !isDelete && before.status !== after.status;
+  const visibilityChanged = !isCreate && !isDelete && !!before.hiddenFromSite !== !!after.hiddenFromSite;
+  if (!isCreate && !isDelete && !statusChanged && !visibilityChanged) return;
 
+  // במחיקה — הנתונים כפי שהיו לפני המחיקה
+  const comm = isDelete ? before : after;
   const [projectName, typeName, projectCrmId] = await Promise.all([
-    after.projectId ? db.ref(`projects/${after.projectId}/name`).once('value').then(s => s.val()) : null,
-    after.typeId ? db.ref(`commemorationTypes/${after.typeId}/name`).once('value').then(s => s.val()) : null,
-    after.projectId ? db.ref(`projects/${after.projectId}/crmId`).once('value').then(s => s.val()) : null,
+    comm.projectId ? db.ref(`projects/${comm.projectId}/name`).once('value').then(s => s.val()) : null,
+    comm.typeId ? db.ref(`commemorationTypes/${comm.typeId}/name`).once('value').then(s => s.val()) : null,
+    comm.projectId ? db.ref(`projects/${comm.projectId}/crmId`).once('value').then(s => s.val()) : null,
   ]);
-  const commemoration = { id: event.params.commId, status: after.status, ...pick(after, WEBHOOK_COMM_FIELDS), hiddenFromSite: !!after.hiddenFromSite, projectName, typeName, ...(projectCrmId ? { projectCrmId } : {}) };
+  const commemoration = { id: event.params.commId, status: comm.status, ...pick(comm, WEBHOOK_COMM_FIELDS), hiddenFromSite: !!comm.hiddenFromSite, projectName, typeName, ...(projectCrmId ? { projectCrmId } : {}) };
 
+  if (isDelete) return sendWebhook(event.id, 'commemoration.deleted', { commemoration });
   if (isCreate) return sendWebhook(event.id, 'commemoration.created', { commemoration });
   if (statusChanged) {
     await sendWebhook(event.id, 'commemoration.status_changed', { commemoration, previousStatus: before.status });

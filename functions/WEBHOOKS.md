@@ -8,9 +8,11 @@
 | `project.status_changed` | השתנה סטאטוס הפרויקט |
 | `project.stage_changed` | השתנה שלב הפרויקט |
 | `project.crm_id_changed` | השתנה מזהה ה-CRM של הפרויקט במערכת שלנו |
+| `project.deleted` | פרויקט נמחק מהמערכת לצמיתות |
 | `commemoration.created` | נוצרה הנצחה חדשה |
 | `commemoration.status_changed` | השתנה סטאטוס הנצחה |
 | `commemoration.visibility_changed` | הנצחה הוסתרה מהאתר או הוצגה בו שוב |
+| `commemoration.deleted` | הנצחה נמחקה מהמערכת לצמיתות |
 
 פרטי תורמים, תופסים ומוכרים **אינם נשלחים**.
 
@@ -65,6 +67,8 @@ X-Webhook-Signature: sha256=<hex>
 
 `previousStatus` מופיע רק ב-`project.status_changed`, `previousStage` רק ב-`project.stage_changed`, ו-`previousCrmId` רק ב-`project.crm_id_changed` (`null` אם לא היה מזהה קודם).
 
+ב-`project.deleted` נשלחים נתוני הפרויקט כפי שהיו רגע לפני המחיקה. אחרי האירוע הזה הפרויקט כבר לא קיים במערכת, ואין להציג אותו באתר.
+
 ערכי `status` בפרויקט: `active` (פתוח למכירה), `completion` (בהשלמה), `closed` (סגור).
 
 ### אירועי הנצחה — `data`
@@ -101,6 +105,8 @@ X-Webhook-Signature: sha256=<hex>
 `previousStatus` מופיע רק ב-`commemoration.status_changed`, ו-`previousHiddenFromSite` רק ב-`commemoration.visibility_changed`.
 
 `hiddenFromSite` נשלח תמיד (`true` / `false`). כש-`true` — ההנצחה קיימת במערכת אך אין להציג אותה באתר (למשל יחידות של פריט שפוצל). זו לא מחיקה: אם היא תוצג שוב יגיע `commemoration.visibility_changed` עם `hiddenFromSite: false`.
+
+ב-`commemoration.deleted` נשלחים נתוני ההנצחה כפי שהיו רגע לפני המחיקה. ההנצחה כבר לא קיימת במערכת, ויש להסיר אותה מהאתר. מחיקה היא סופית, ולא יגיע עליה אירוע נוסף.
 
 ערכי `status` בהנצחה: `available` (פנויה), `captured` (תפוסה), `sold` (נמכרה).
 
