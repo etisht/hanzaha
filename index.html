@@ -1941,7 +1941,7 @@ function renderCommCard(id, c, blockedByWhole) {
   const cardStyle = (isBlocked || isDisabled) ? ' style="opacity:0.55;border-color:#ccc;"' : '';
   const wholeProjectBadge = c.isWholeProject ? '<span style="font-size:10px;background:#FFF3E0;color:#E65100;border-radius:4px;padding:1px 5px;font-weight:600;margin-bottom:2px;display:inline-block;">⭐ כל הפרויקט</span><br>' : '';
   const unitBadge = c.parentGroupId ? `<span style="font-size:10px;background:#E3F2FD;color:#1565C0;border-radius:4px;padding:1px 5px;font-weight:600;margin-bottom:2px;display:inline-block;">יחידה ${c.unitIndex||''}/${c.totalUnits||''}</span><br>` : '';
-  const hiddenBadge = c.hiddenFromSite && !isBasicViewer() ? '<span style="font-size:10px;background:#ECEFF1;color:#546E7A;border-radius:4px;padding:1px 5px;font-weight:600;margin-bottom:2px;display:inline-block;">🙈 מוסתר מהאתר</span><br>' : '';
+  const hiddenBadge = c.hiddenFromSite && !isBasicViewer() ? '<span style="font-size:10px;background:#ECEFF1;color:#546E7A;border-radius:4px;padding:1px 5px;font-weight:600;margin-bottom:2px;display:inline-block;">🚫 מוסתר מהאתר</span><br>' : '';
 
   return `<div class="comm-card ${cardClass}"${cardStyle} onclick="openCommDetail('${id}')">
     <span class="comm-status-badge ${badgeClass}">${badgeLabel}</span>
@@ -2326,11 +2326,11 @@ function openCommDetail(commId) {
     actionsHtml = `<button class="btn btn-ghost btn-sm" onclick="adminToggleDisabled('${commId}')">${disLabel}</button>` + actionsHtml;
   }
   if (currentUser.role === 'admin' || currentUser.role === 'senior') {
-    const hideLabel = c.hiddenFromSite ? '👁 הצג באתר' : '🙈 הסתר מהאתר';
+    const hideLabel = c.hiddenFromSite ? '👁 הצג באתר' : '🚫 הסתר מהאתר';
     actionsHtml = `<button class="btn btn-ghost btn-sm" onclick="toggleHiddenFromSite('${commId}')">${hideLabel}</button>` + actionsHtml;
     if (c.parentGroupId) {
       const groupHidden = groupUnits(c.parentGroupId).every(([,u]) => u.hiddenFromSite);
-      actionsHtml = `<button class="btn btn-ghost btn-sm" onclick="setGroupHiddenFromSite('${c.parentGroupId}', ${!groupHidden})">${groupHidden ? '👁 הצג את כל היחידות' : '🙈 הסתר את כל היחידות'}</button>` + actionsHtml;
+      actionsHtml = `<button class="btn btn-ghost btn-sm" onclick="setGroupHiddenFromSite('${c.parentGroupId}', ${!groupHidden})">${groupHidden ? '👁 הצג את כל היחידות' : '🚫 הסתר את כל היחידות'}</button>` + actionsHtml;
     }
   }
   document.getElementById('detail-actions').innerHTML = actionsHtml;
@@ -2420,7 +2420,7 @@ async function toggleHiddenFromSite(commId, fromAdminTable) {
   allComms[commId] = { ...c, hiddenFromSite: newVal || undefined };
   if (fromAdminTable) renderAdminProjectCommsPage();
   else { closeModal('modal-comm-detail'); renderCommsGrid(); }
-  showToast(newVal ? '🙈 הוסתר מהאתר' : '👁 מוצג שוב באתר', 'success');
+  showToast(newVal ? '🚫 הוסתר מהאתר' : '👁 מוצג שוב באתר', 'success');
 }
 
 const groupUnits = groupId => Object.entries(allComms).filter(([,u]) => u.parentGroupId === groupId);
@@ -2440,7 +2440,7 @@ async function setGroupHiddenFromSite(groupId, hide, fromAdminTable) {
   units.forEach(([id, u]) => { allComms[id] = { ...u, hiddenFromSite: hide || undefined }; });
   if (fromAdminTable) renderAdminProjectCommsPage();
   else { closeModal('modal-comm-detail'); renderCommsGrid(); }
-  showToast(hide ? `🙈 ${units.length} יחידות הוסתרו מהאתר` : `👁 ${units.length} יחידות מוצגות שוב באתר`, 'success');
+  showToast(hide ? `🚫 ${units.length} יחידות הוסתרו מהאתר` : `👁 ${units.length} יחידות מוצגות שוב באתר`, 'success');
 }
 
 async function adminResetComm(commId) {
@@ -4164,15 +4164,15 @@ async function renderAdminProjectCommsPage() {
   const statusTagClass = { available: 'tag-success', captured: 'tag-warning', sold: 'tag-gray' };
   const rows = Object.entries(comms).sort((a,b) => (b[1].price||0) - (a[1].price||0)).map(([id,c]) => `
     <tr>
-      <td><strong>${esc(c.name)}</strong>${c.isWholeProject ? ' <span class="tag tag-warning" style="font-size:11px;vertical-align:middle;">⭐ כל הפרויקט</span>' : ''}${c.parentGroupId ? ` <span style="font-size:10px;background:#E3F2FD;color:#1565C0;border-radius:4px;padding:1px 5px;font-weight:600;">יחידה ${c.unitIndex||''}/${c.totalUnits||''}</span>` : ''}${c.hiddenFromSite ? ' <span style="font-size:10px;background:#ECEFF1;color:#546E7A;border-radius:4px;padding:1px 5px;font-weight:600;">🙈 מוסתר מהאתר</span>' : ''}${c.notes ? `<div style="font-size:12px;color:var(--text-muted);margin-top:2px;">${esc(c.notes)}</div>` : ''}</td>
+      <td><strong>${esc(c.name)}</strong>${c.isWholeProject ? ' <span class="tag tag-warning" style="font-size:11px;vertical-align:middle;">⭐ כל הפרויקט</span>' : ''}${c.parentGroupId ? ` <span style="font-size:10px;background:#E3F2FD;color:#1565C0;border-radius:4px;padding:1px 5px;font-weight:600;">יחידה ${c.unitIndex||''}/${c.totalUnits||''}</span>` : ''}${c.hiddenFromSite ? ' <span style="font-size:10px;background:#ECEFF1;color:#546E7A;border-radius:4px;padding:1px 5px;font-weight:600;">🚫 מוסתר מהאתר</span>' : ''}${c.notes ? `<div style="font-size:12px;color:var(--text-muted);margin-top:2px;">${esc(c.notes)}</div>` : ''}</td>
       <td>${esc(allTypes[c.typeId]?.name||'')}</td>
       <td>₪${(c.price||0).toLocaleString()}</td>
       <td><span class="tag ${statusTagClass[c.status]||''}">${statusLabels[c.status]||''}</span></td>
       <td>
         ${canEditComms ? `<div class="btn-row">
           <button class="btn btn-ghost btn-sm" onclick="editComm('${id}')">✏️</button>
-          <button class="btn btn-ghost btn-sm" title="${c.hiddenFromSite ? 'הצג באתר' : 'הסתר מהאתר (בלי למחוק)'}" onclick="toggleHiddenFromSite('${id}', true)">${c.hiddenFromSite ? '👁' : '🙈'}</button>
-          ${c.parentGroupId && c.unitIndex === 1 ? (() => { const gh = groupUnits(c.parentGroupId).every(([,u]) => u.hiddenFromSite); return `<button class="btn btn-ghost btn-sm" title="${gh ? 'הצג את כל היחידות באתר' : 'הסתר את כל היחידות מהאתר'}" onclick="setGroupHiddenFromSite('${c.parentGroupId}', ${!gh}, true)">${gh ? '👁 כל היחידות' : '🙈 כל היחידות'}</button>`; })() : ''}
+          <button class="btn btn-ghost btn-sm" title="${c.hiddenFromSite ? 'הצג באתר' : 'הסתר מהאתר (בלי למחוק)'}" onclick="toggleHiddenFromSite('${id}', true)">${c.hiddenFromSite ? '👁' : '🚫'}</button>
+          ${c.parentGroupId && c.unitIndex === 1 ? (() => { const gh = groupUnits(c.parentGroupId).every(([,u]) => u.hiddenFromSite); return `<button class="btn btn-ghost btn-sm" title="${gh ? 'הצג את כל היחידות באתר' : 'הסתר את כל היחידות מהאתר'}" onclick="setGroupHiddenFromSite('${c.parentGroupId}', ${!gh}, true)">${gh ? '👁 כל היחידות' : '🚫 כל היחידות'}</button>`; })() : ''}
           <button class="btn btn-danger btn-sm" onclick="deleteComm('${id}')">🗑</button>
         </div>` : '—'}
       </td>
