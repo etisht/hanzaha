@@ -207,6 +207,10 @@ function pick(obj, fields) {
 // אותה לוגיקה כמו getProjectStatus בצד הלקוח
 const projectStatusOf = p => p.projectStatus || (p.isActive ? 'active' : 'closed');
 
+// השדות מהרשימה המותרת שהשתנו בין before ל-after (השוואה עמוקה, גם ל-typePrices)
+const changedFieldsOf = (before, after, fields) =>
+  fields.filter(f => JSON.stringify(before[f] ?? null) !== JSON.stringify(after[f] ?? null));
+
 async function sendWebhook(eventId, type, data) {
   const url = WEBHOOK_URL.value();
   if (!url) return;
@@ -232,10 +236,10 @@ exports.projectWebhook = onValueWritten({ ref: '/projects/{projectId}', ...WEBHO
   if (!after && !before) return;
   // מחיקה — שולחים את נתוני הפרויקט כפי שהיו לפני המחיקה
   if (!after) {
-    const project = { id: event.params.projectId, status: projectStatusOf(before), ...pick(before, WEBHOOK_PROJECT_FIELDS) };
+    const project = { id: event.params.projectId, status: projectStatusOf(before), ...pick(before, WEBHOOK_PROJECT_FIELDS), hiddenFromSite: !!before.hiddenFromSite };
     return sendWebhook(event.id, 'project.deleted', { project });
   }
-  const project = { id: event.params.projectId, status: projectStatusOf(after), ...pick(after, WEBHOOK_PROJECT_FIELDS) };
+  const project = { id: event.params.projectId, status: projectStatusOf(after), ...pick(after, WEBHOOK_PROJECT_FIELDS), hiddenFromSite: !!after.hiddenFromSite };
 
   if (!before) return sendWebhook(event.id, 'project.created', { project });
   if (projectStatusOf(before) !== project.status) {
@@ -244,9 +248,18 @@ exports.projectWebhook = onValueWritten({ ref: '/projects/{projectId}', ...WEBHO
   if ((before.stage || null) !== (after.stage || null)) {
     await sendWebhook(`${event.id}-stage`, 'project.stage_changed', { project, previousStage: before.stage || null });
   }
+  // הסתרה / הצגה של כל הפרויקט באתר (הפרויקט וההנצחות שלו נשארים במערכת)
+  if (!!before.hiddenFromSite !== !!after.hiddenFromSite) {
+    await sendWebhook(`${event.id}-visibility`, 'project.visibility_changed', { project, previousHiddenFromSite: !!before.hiddenFromSite });
+  }
   // שינוי שהגיע מהאתר המחובר (crmIdSource = external) לא נשלח אליו בחזרה
   if ((before.crmId || null) !== (after.crmId || null) && after.crmIdSource !== 'external') {
     await sendWebhook(`${event.id}-crm`, 'project.crm_id_changed', { project, previousCrmId: before.crmId || null });
+  }
+  // כל שינוי אחר בשדות שנשלחים לאתר (שם, תיאור, מחירים וכו'). stage ו-crmId כבר מכוסים באירועים משלהם.
+  const changedFields = changedFieldsOf(before, after, WEBHOOK_PROJECT_FIELDS.filter(f => f !== 'stage' && f !== 'crmId'));
+  if (changedFields.length) {
+    await sendWebhook(`${event.id}-updated`, 'project.updated', { project, changedFields });
   }
 });
 
@@ -258,16 +271,21 @@ exports.commemorationWebhook = onValueWritten({ ref: '/commemorations/{commId}',
   const isDelete = !after;
   const statusChanged = !isCreate && !isDelete && before.status !== after.status;
   const visibilityChanged = !isCreate && !isDelete && !!before.hiddenFromSite !== !!after.hiddenFromSite;
-  if (!isCreate && !isDelete && !statusChanged && !visibilityChanged) return;
+  // שינוי בשדות שנשלחים לאתר (לא למכירה, מחיר, שם וכו'). זמני תפיסה/מכירה שמשתנים יחד עם הסטאטוס כבר נשלחים ב-status_changed.
+  const STATUS_TIME_FIELDS = ['capturedAt', 'captureExpiry', 'soldAt'];
+  const changedFields = isCreate || isDelete ? [] :
+    changedFieldsOf(before, after, WEBHOOK_COMM_FIELDS.filter(f => !(statusChanged && STATUS_TIME_FIELDS.includes(f))));
+  if (!isCreate && !isDelete && !statusChanged && !visibilityChanged && !changedFields.length) return;
 
   // במחיקה — הנתונים כפי שהיו לפני המחיקה
   const comm = isDelete ? before : after;
-  const [projectName, typeName, projectCrmId] = await Promise.all([
+  const [projectName, typeName, projectCrmId, projectHidden] = await Promise.all([
     comm.projectId ? db.ref(`projects/${comm.projectId}/name`).once('value').then(s => s.val()) : null,
     comm.typeId ? db.ref(`commemorationTypes/${comm.typeId}/name`).once('value').then(s => s.val()) : null,
     comm.projectId ? db.ref(`projects/${comm.projectId}/crmId`).once('value').then(s => s.val()) : null,
+    comm.projectId ? db.ref(`projects/${comm.projectId}/hiddenFromSite`).once('value').then(s => s.val()) : null,
   ]);
-  const commemoration = { id: event.params.commId, status: comm.status, ...pick(comm, WEBHOOK_COMM_FIELDS), hiddenFromSite: !!comm.hiddenFromSite, projectName, typeName, ...(projectCrmId ? { projectCrmId } : {}) };
+  const commemoration = { id: event.params.commId, status: comm.status, ...pick(comm, WEBHOOK_COMM_FIELDS), hiddenFromSite: !!comm.hiddenFromSite, projectHiddenFromSite: !!projectHidden, projectName, typeName, ...(projectCrmId ? { projectCrmId } : {}) };
 
   if (isDelete) return sendWebhook(event.id, 'commemoration.deleted', { commemoration });
   if (isCreate) return sendWebhook(event.id, 'commemoration.created', { commemoration });
@@ -276,6 +294,9 @@ exports.commemorationWebhook = onValueWritten({ ref: '/commemorations/{commId}',
   }
   if (visibilityChanged) {
     await sendWebhook(`${event.id}-visibility`, 'commemoration.visibility_changed', { commemoration, previousHiddenFromSite: !!before.hiddenFromSite });
+  }
+  if (changedFields.length) {
+    await sendWebhook(`${event.id}-updated`, 'commemoration.updated', { commemoration, changedFields });
   }
 });
 

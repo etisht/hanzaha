@@ -62,6 +62,10 @@
       ".read": "auth != null && root.child('users').child(auth.uid).exists()",
       ".write": "auth != null && root.child('users').child(auth.uid).child('role').val() === 'admin'",
       "$projectId": {
+        "hiddenFromSite": {
+          ".write": "auth != null && (root.child('users').child(auth.uid).child('role').val() === 'admin' || root.child('users').child(auth.uid).child('role').val() === 'senior')",
+          ".validate": "newData.isBoolean()"
+        },
         "typePrices": {
           ".write": "auth != null && (root.child('users').child(auth.uid).child('role').val() === 'admin' || root.child('users').child(auth.uid).child('role').val() === 'senior')"
         },

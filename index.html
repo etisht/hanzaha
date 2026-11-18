@@ -1730,6 +1730,7 @@ function renderProjectCard(id, p) {
     <div style="display:flex;align-items:center;flex-wrap:wrap;gap:6px;margin-bottom:10px;">
       ${mikvehFinished ? `<span class="tag tag-mikveh-finished">${MIKVEH_FINISHED_LABEL} · גמישות במחיר</span>` : statusTag}
       ${stageBadge}${completionBadge}${regionBadge}
+      ${p.hiddenFromSite && !isBasicViewer() ? '<span class="tag" style="background:#ECEFF1;color:#546E7A;">🚫 מוסתר מהאתר</span>' : ''}
     </div>
     <div class="progress-bar-wrap"><div class="progress-bar-fill" id="pb-${id}" style="width:0%"></div></div>
     <div class="progress-stats">
@@ -1793,6 +1794,7 @@ async function renderProjectDetailPage() {
       <span>›</span><span>${esc(project.name)}</span>
     </div>
     ${closedWarning}
+    ${project.hiddenFromSite && !isBasicViewer() ? '<div style="background:#ECEFF1;border:1px solid #B0BEC5;border-radius:10px;padding:10px 16px;margin-bottom:18px;font-size:14px;color:#455A64;font-weight:600;">🚫 הפרויקט מוסתר מהאתר — הוא וכל ההנצחות שלו לא מוצגים באתר המחובר</div>' : ''}
     ${descriptionHtml}
     <div class="filters-bar">
       <span class="filter-label">סינון:</span>
@@ -3346,6 +3348,22 @@ async function signsUpdateField(commId, field, value, refreshTable) {
 // ============================================================
 const isSignsCompletionItem = c => c.status === 'sold' && !c.signPrinted && !!allProjects[c.projectId]?.signsPrinted;
 
+// הסתרת פרויקט שלם מהאתר המחובר — הפרויקט וההנצחות שלו נשארים במערכת (נשלח ב-webhook: project.visibility_changed)
+async function toggleProjectHiddenFromSite(projectId) {
+  if (currentUser.role !== 'admin' && currentUser.role !== 'senior') return;
+  const p = allProjects[projectId];
+  if (!p) return;
+  const hide = !p.hiddenFromSite;
+  if (!confirm(hide ? `להסתיר את כל הפרויקט "${p.name}" מהאתר?\nהפרויקט וההנצחות שלו לא יימחקו ויישארו במערכת.` : `להציג שוב את הפרויקט "${p.name}" באתר?`)) return;
+  try {
+    if (IS_CONFIGURED) await db.ref(`projects/${projectId}/hiddenFromSite`).set(hide || null);
+  } catch(e) { showToast('שגיאה: ' + e.message, 'error'); return; }
+  if (hide) p.hiddenFromSite = true; else delete p.hiddenFromSite;
+  if (drawerProjectId === projectId) openProjectDrawer(projectId);
+  if (currentPage === 'admin-projects') renderAdminProjectsTable();
+  showToast(hide ? '🚫 הפרויקט הוסתר מהאתר' : '👁 הפרויקט מוצג שוב באתר', 'success');
+}
+
 async function markProjectSignsPrinted(projectId, value) {
   if (currentUser.role !== 'admin' && currentUser.role !== 'senior') return;
   const p = allProjects[projectId];
@@ -3730,6 +3748,7 @@ function renderDrawerView() {
       <span class="tag ${statusClass}" style="font-size:13px;padding:4px 12px;">${pStatus === 'completion' ? '🔵 ' : ''}${statusLabel}</span>
       <span class="priority-badge priority-${p.priority||3}" title="עדיפות">${p.priority||3}</span>
       ${p.stage ? `<span style="display:inline-block;padding:4px 12px;border-radius:20px;font-size:12px;font-weight:700;background:${getStageColor(p.stage)};color:white;">📍 ${esc(p.stage)}</span>` : ''}
+      ${p.hiddenFromSite ? '<span class="tag" style="background:#ECEFF1;color:#546E7A;font-size:12px;padding:4px 12px;">🚫 מוסתר מהאתר</span>' : ''}
     </div>
 
     <!-- פרטים בסיסיים -->
@@ -3802,6 +3821,7 @@ function renderDrawerView() {
   document.getElementById('drawer-footer').innerHTML = `
     ${signsPrintedHtml}
     <button class="btn btn-ghost btn-sm" onclick="showPage('admin-project-comms','${id}')">✏️ ניהול הנצחות</button>
+    ${canMarkSigns ? `<button class="btn btn-ghost btn-sm" onclick="toggleProjectHiddenFromSite('${id}')">${p.hiddenFromSite ? '👁 הצג את הפרויקט באתר' : '🚫 הסתר את הפרויקט מהאתר'}</button>` : ''}
     ${isAdminUser ? `<button class="btn btn-primary btn-sm" style="margin-right:auto;" onclick="startDrawerEdit()">📝 עריכה</button>
     <button class="btn btn-danger btn-sm" onclick="deleteProject('${id}','${esc(p.name)}');closeProjectDrawer()">🗑️ מחק</button>` : ''}
   `;
@@ -4033,6 +4053,7 @@ function renderAdminProjectsTable() {
       <td>
         <strong style="color:var(--primary);text-decoration:underline dotted;">${esc(p.name)}</strong>
         ${p.signsPrinted ? '<span style="font-size:10px;background:#FFF3E0;color:#E65100;border-radius:4px;padding:1px 6px;margin-right:6px;" title="שלטי הפרויקט הודפסו">🖨️ הודפסו</span>' : ''}
+        ${p.hiddenFromSite ? '<span style="font-size:10px;background:#ECEFF1;color:#546E7A;border-radius:4px;padding:1px 6px;margin-right:6px;font-weight:600;" title="הפרויקט וכל ההנצחות שלו מוסתרים מהאתר">🚫 מוסתר מהאתר</span>' : ''}
         ${p.notes ? `<div style="font-size:12px;color:var(--text-muted);margin-top:2px;">📝 ${esc(p.notes.length>60?p.notes.slice(0,60)+'…':p.notes)}</div>` : ''}
         ${countsHtml}
       </td>
@@ -4045,6 +4066,7 @@ function renderAdminProjectsTable() {
         <div class="btn-row">
           <button class="btn btn-ghost btn-sm" onclick="showPage('admin-project-comms','${id}')">✏️ הנצחות</button>
           <button class="btn btn-ghost btn-sm" onclick="openProjectDrawer('${id}')">🔍 פרטים</button>
+          ${currentUser.role === 'admin' || currentUser.role === 'senior' ? `<button class="btn btn-ghost btn-sm" title="${p.hiddenFromSite ? 'הצג את הפרויקט באתר' : 'הסתר את כל הפרויקט מהאתר (בלי למחוק)'}" onclick="toggleProjectHiddenFromSite('${id}')">${p.hiddenFromSite ? '👁' : '🚫'}</button>` : ''}
           ${currentUser.role === 'admin' ? `<button class="btn btn-danger btn-sm" onclick="deleteProject('${id}','${esc(p.name)}')">🗑️ מחק</button>` : ''}
         </div>
       </td>

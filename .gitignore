@@ -3,3 +3,6 @@
 
 # Cloud Functions dependencies
 functions/node_modules/
+
+# Local function params (webhook URL)
+functions/.env

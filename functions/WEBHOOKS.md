@@ -7,11 +7,14 @@
 | `project.created` | נפתח פרויקט חדש |
 | `project.status_changed` | השתנה סטאטוס הפרויקט |
 | `project.stage_changed` | השתנה שלב הפרויקט |
+| `project.visibility_changed` | כל הפרויקט הוסתר מהאתר או הוצג בו שוב |
 | `project.crm_id_changed` | השתנה מזהה ה-CRM של הפרויקט במערכת שלנו |
+| `project.updated` | השתנה שדה אחר בפרויקט (שם, תיאור, מחירים וכו') |
 | `project.deleted` | פרויקט נמחק מהמערכת לצמיתות |
 | `commemoration.created` | נוצרה הנצחה חדשה |
 | `commemoration.status_changed` | השתנה סטאטוס הנצחה |
 | `commemoration.visibility_changed` | הנצחה הוסתרה מהאתר או הוצגה בו שוב |
+| `commemoration.updated` | השתנה שדה אחר בהנצחה — למשל סימון "לא למכירה" / החזרה למכירה (`isDisabled`), מחיר, שם |
 | `commemoration.deleted` | הנצחה נמחקה מהמערכת לצמיתות |
 
 פרטי תורמים, תופסים ומוכרים **אינם נשלחים**.
@@ -57,15 +60,21 @@ X-Webhook-Signature: sha256=<hex>
     "expectedCompletion": "2027-03-01",
     "createdAt": 1760000000000,
     "typePrices": { "<typeId>": 5000 },
-    "crmId": "CRM-1234"
+    "crmId": "CRM-1234",
+    "hiddenFromSite": false
   },
   "previousStatus": "active",
   "previousStage": "תכנון",
-  "previousCrmId": "CRM-1200"
+  "previousCrmId": "CRM-1200",
+  "previousHiddenFromSite": false
 }
 ```
 
-`previousStatus` מופיע רק ב-`project.status_changed`, `previousStage` רק ב-`project.stage_changed`, ו-`previousCrmId` רק ב-`project.crm_id_changed` (`null` אם לא היה מזהה קודם).
+`previousStatus` מופיע רק ב-`project.status_changed`, `previousStage` רק ב-`project.stage_changed`, `previousCrmId` רק ב-`project.crm_id_changed` (`null` אם לא היה מזהה קודם), ו-`previousHiddenFromSite` רק ב-`project.visibility_changed`.
+
+`hiddenFromSite` בפרויקט נשלח תמיד (`true` / `false`). כש-`true`, הפרויקט כולו וכל ההנצחות שלו קיימים במערכת אבל לא מוצגים באתר. זו לא מחיקה. כשהפרויקט מוצג שוב יגיע `project.visibility_changed` עם `hiddenFromSite: false`. בזמן ההסתרה ובחזרה ממנה לא נשלחים אירועים נפרדים לכל הנצחה. ההנצחות שומרות על ה-`hiddenFromSite` הפרטי שלהן, ומה שקובע אם הנצחה מוצגת: `!project.hiddenFromSite && !commemoration.hiddenFromSite`.
+
+ב-`project.updated` מגיע גם `changedFields` — רשימת השדות שהשתנו (למשל `["name", "typePrices"]`). שינוי שלב או מזהה CRM לא נכלל בו, כי הם נשלחים באירועים משלהם. אם הפרויקט השתנה שם, יש לעדכן גם את `projectName` בהנצחות שלו באתר.
 
 ב-`project.deleted` נשלחים נתוני הפרויקט כפי שהיו רגע לפני המחיקה. אחרי האירוע הזה הפרויקט כבר לא קיים במערכת, ואין להציג אותו באתר.
 
@@ -88,6 +97,7 @@ X-Webhook-Signature: sha256=<hex>
     "notes": "…",
     "isDisabled": false,
     "hiddenFromSite": false,
+    "projectHiddenFromSite": false,
     "isWholeProject": false,
     "isFreeItem": false,
     "parentGroupId": "…",
@@ -104,7 +114,11 @@ X-Webhook-Signature: sha256=<hex>
 
 `previousStatus` מופיע רק ב-`commemoration.status_changed`, ו-`previousHiddenFromSite` רק ב-`commemoration.visibility_changed`.
 
+ב-`commemoration.updated` מגיע גם `changedFields` — רשימת השדות שהשתנו (למשל `["isDisabled"]`). כש-`isDisabled: true` ההנצחה סגורה למכירה ויש להציג אותה כלא זמינה; `false` — חזרה למכירה. אם באותו עדכון השתנה גם הסטאטוס, יגיעו שני אירועים: `status_changed` ו-`updated`. הדרך הפשוטה לטפל: בכל אירוע לעדכן את כל ההנצחה לפי `commemoration`.
+
 `hiddenFromSite` נשלח תמיד (`true` / `false`). כש-`true` — ההנצחה קיימת במערכת אך אין להציג אותה באתר (למשל יחידות של פריט שפוצל). זו לא מחיקה: אם היא תוצג שוב יגיע `commemoration.visibility_changed` עם `hiddenFromSite: false`.
+
+`projectHiddenFromSite` מציין אם כל הפרויקט של ההנצחה מוסתר מהאתר (ראו `project.visibility_changed`). כש-`true` אין להציג את ההנצחה, גם אם ה-`hiddenFromSite` שלה הוא `false`.
 
 ב-`commemoration.deleted` נשלחים נתוני ההנצחה כפי שהיו רגע לפני המחיקה. ההנצחה כבר לא קיימת במערכת, ויש להסיר אותה מהאתר. מחיקה היא סופית, ולא יגיע עליה אירוע נוסף.
 
