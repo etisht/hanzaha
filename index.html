@@ -5703,7 +5703,7 @@ if ('serviceWorker' in navigator) {
 .nsw-ticket-main{min-width:0;flex:1}
 .nsw-ticket-title{display:flex;align-items:center;gap:6px;font-size:13.5px;font-weight:600}
 .nsw-ticket-desc{margin:2px 0 0;font-size:12.5px;color:var(--nsw-muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.nsw-ticket[data-open="true"] .nsw-ticket-desc{white-space:normal}
+.nsw-ticket[data-open="true"] .nsw-ticket-desc{white-space:pre-wrap;overflow-wrap:anywhere}
 .nsw-chev{color:var(--nsw-muted);transition:transform .35s var(--nsw-spring);flex:none}
 .nsw-ticket[data-open="true"] .nsw-chev{transform:rotate(180deg)}
 .nsw-ticket-body{display:flex;flex-direction:column;gap:8px;padding:0 14px 14px}
@@ -5711,6 +5711,11 @@ if ('serviceWorker' in navigator) {
 .nsw-bubble-staff{align-self:flex-end;background:var(--nsw-wash);border-radius:14px 14px 4px 14px}
 .nsw-bubble-author{display:block;font-size:11px;font-weight:700;color:var(--nsw-muted);margin-bottom:2px}
 .nsw-bubble-staff .nsw-bubble-author{color:var(--nsw-ink)}
+.nsw-text{display:block;white-space:pre-wrap;overflow-wrap:anywhere;text-align:start}
+.nsw-file{display:inline-flex;align-items:center;gap:6px;max-width:100%;margin-top:6px;padding:6px 10px;border:1px solid var(--nsw-border);border-radius:10px;background:var(--nsw-surface);color:var(--nsw-ink);font:inherit;font-size:12.5px;font-weight:600;cursor:pointer}
+.nsw-file span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.nsw-file-img{padding:0;overflow:hidden;cursor:zoom-in}
+.nsw-file-img img{display:block;max-width:100%;height:auto}
 .nsw-reply{display:flex;gap:8px}
 .nsw-shot{display:block;border-radius:12px;overflow:hidden;border:1px solid var(--nsw-border)}
 .nsw-shot img{display:block;width:100%;height:auto}
@@ -5754,6 +5759,7 @@ if ('serviceWorker' in navigator) {
   chevron: "m6 9 6 6 6-6",
   alert: "M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0ZM12 9v4M12 17h.01",
   archive: "M21 8v13H3V8M1 3h22v5H1zM10 12h4",
+  paperclip: "m21.4 11.1-9.2 9.2a6 6 0 0 1-8.5-8.5l9.2-9.2a4 4 0 0 1 5.7 5.7l-9.2 9.2a2 2 0 0 1-2.8-2.8l8.5-8.5",
   reopen: "M3 12a9 9 0 1 0 3-6.7L3 8M3 3v5h5",
   inbox: "M22 12h-6l-2 3h-4l-2-3H2M5.5 5.1 2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.5-6.9A2 2 0 0 0 16.8 4H7.2a2 2 0 0 0-1.7 1.1Z",
 };
@@ -5971,6 +5977,44 @@ if ('serviceWorker' in navigator) {
     }
   }
 
+  // English-only text reads LTR; anything with Hebrew is RTL even when it opens with an English word.
+  function textDir(text) { return /[\u0590-\u08FF]/.test(text) || !/[A-Za-z]/.test(text) ? 'rtl' : 'ltr'; }
+
+  // Files Neyra staff sent with a reply: images preview in the bubble, the rest is a chip.
+  // Links are short-lived (5 min), so every click fetches a fresh one.
+  const PREVIEW_TYPES = ['image/png', 'image/jpeg', 'image/gif', 'image/webp'];
+  function attachmentHtml(ticketId, a) {
+    return '<button type="button" class="nsw-file neyra-file" data-ticket="' + esc(ticketId) + '" data-file="' + esc(a.id) + '"' +
+      (PREVIEW_TYPES.includes(a.contentType) ? ' data-image="1"' : '') + '>' +
+      icon(ICONS.paperclip, 14) + '<span dir="auto">' + esc(a.filename) + '</span></button>';
+  }
+  async function attachmentUrl(el) {
+    const res = await apiFetch('/service/external-tickets/' + el.dataset.ticket + '/attachments/' + el.dataset.file + '/url?reporterExternalId=' + encodeURIComponent(reporterExternalId()));
+    return res.downloadUrl;
+  }
+  async function openAttachment(el) {
+    // Opened before the await — popup blockers only allow it inside the click.
+    const win = window.open('', '_blank');
+    try {
+      const url = await attachmentUrl(el);
+      if (win) win.location.href = url; else window.location.href = url;
+    } catch (err) {
+      if (win) win.close();
+      el.title = 'לא ניתן לפתוח את הקובץ, נסו שוב';
+      if (!el.nextElementSibling || !el.nextElementSibling.classList.contains('neyra-file-error')) {
+        el.insertAdjacentHTML('afterend', '<p class="nsw-muted neyra-file-error">לא ניתן לפתוח את הקובץ, נסו שוב</p>');
+      }
+    }
+  }
+  async function loadAttachmentPreview(el) {
+    try {
+      const img = new Image();
+      img.alt = el.textContent;
+      img.onload = () => { el.classList.add('nsw-file-img'); el.replaceChildren(img); };
+      img.src = await attachmentUrl(el);
+    } catch (err) { /* stays a chip */ }
+  }
+
   async function renderMyTickets() {
     const body = document.getElementById('neyra-svc-body');
     body.innerHTML =
@@ -6005,7 +6049,9 @@ if ('serviceWorker' in navigator) {
       const comments = (t.comments || []).map((c) => {
         const staff = c.authorSide === 'staff';
         const author = staff ? 'צוות Neyra' : (c.authorName || 'את/ה');
-        return '<div class="nsw-bubble' + (staff ? ' nsw-bubble-staff' : '') + '"><span class="nsw-bubble-author">' + esc(author) + '</span>' + esc(c.body) + '</div>';
+        return '<div class="nsw-bubble' + (staff ? ' nsw-bubble-staff' : '') + '"><span class="nsw-bubble-author">' + esc(author) + '</span>' +
+          (c.body ? '<span class="nsw-text" dir="' + textDir(c.body) + '">' + esc(c.body) + '</span>' : '') +
+          (c.attachments || []).map((a) => attachmentHtml(t.id, a)).join('') + '</div>';
       }).join('');
       return (
         '<div class="nsw-ticket" data-open="false" data-id="' + t.id + '" data-unread="' + !!t.reporterUnread + '">' +
@@ -6058,7 +6104,12 @@ if ('serviceWorker' in navigator) {
         exp.dataset.screenshotLoaded = '1';
         loadTicketScreenshot(id);
       }
+      if (opening && !exp.dataset.filesLoaded) {
+        exp.dataset.filesLoaded = '1';
+        exp.querySelectorAll('.neyra-file[data-image]').forEach(loadAttachmentPreview);
+      }
     }));
+    listEl.querySelectorAll('.neyra-file').forEach((el) => el.addEventListener('click', () => openAttachment(el)));
     const sendReply = async (id) => {
       const input = listEl.querySelector('.neyra-reply[data-id="' + id + '"]');
       const val = input.value.trim();
