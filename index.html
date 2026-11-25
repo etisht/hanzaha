@@ -5786,7 +5786,13 @@ if ('serviceWorker' in navigator) {
   }
 
   async function apiFetch(path, opts) {
-    const res = await fetch(API_BASE + path, Object.assign({ headers: { 'Content-Type': 'application/json' } }, opts || {}));
+    const headers = { 'Content-Type': 'application/json' };
+    // Proves to the server who is asking; it only shows a user their own tickets.
+    try {
+      const user = firebase.auth().currentUser;
+      if (user) headers.Authorization = 'Bearer ' + await user.getIdToken();
+    } catch (err) { /* the server answers "sign in again" */ }
+    const res = await fetch(API_BASE + path, Object.assign({ headers: headers }, opts || {}));
     if (!res.ok) {
       const body = await res.json().catch(() => ({}));
       throw new Error(body.message || ('Request failed (' + res.status + ')'));
