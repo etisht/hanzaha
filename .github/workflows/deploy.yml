@@ -11,10 +11,7 @@ concurrency:
   group: "pages"
   cancel-in-progress: false
 jobs:
-  deploy:
-    environment:
-      name: github-pages
-      url: ${{ steps.deployment.outputs.page_url }}
+  build:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -22,5 +19,22 @@ jobs:
       - uses: actions/upload-pages-artifact@v3
         with:
           path: '.'
+  # A job of its own, so "Re-run failed jobs" doesn't upload a second artifact
+  # (deploy-pages refuses to choose between two).
+  deploy:
+    needs: build
+    environment:
+      name: github-pages
+      url: ${{ steps.retry.outputs.page_url || steps.deployment.outputs.page_url }}
+    runs-on: ubuntu-latest
+    steps:
       - id: deployment
+        uses: actions/deploy-pages@v4
+        continue-on-error: true
+      # The artifact sometimes isn't listed yet right after the upload
+      # ("No artifacts named github-pages") — wait and try once more.
+      - if: steps.deployment.outcome == 'failure'
+        run: sleep 30
+      - id: retry
+        if: steps.deployment.outcome == 'failure'
         uses: actions/deploy-pages@v4
