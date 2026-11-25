@@ -195,7 +195,7 @@ const { logger } = require('firebase-functions');
 const WEBHOOK_URL = defineString('WEBHOOK_URL', { default: '' });
 const WEBHOOK_SECRET = defineSecret('WEBHOOK_SECRET');
 
-const WEBHOOK_PROJECT_FIELDS = ['name', 'description', 'region', 'population', 'sector', 'location', 'notes', 'priority', 'stage', 'expectedCompletion', 'createdAt', 'typePrices', 'crmId'];
+const WEBHOOK_PROJECT_FIELDS = ['name', 'description', 'region', 'population', 'sector', 'location', 'notes', 'priority', 'stage', 'expectedCompletion', 'projectCost', 'createdAt', 'typePrices', 'crmId'];
 const WEBHOOK_COMM_FIELDS = ['projectId', 'typeId', 'name', 'price', 'notes', 'isDisabled', 'isWholeProject', 'isFreeItem', 'parentGroupId', 'unitIndex', 'totalUnits', 'capturedAt', 'captureExpiry', 'soldAt'];
 
 function pick(obj, fields) {

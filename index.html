@@ -934,6 +934,10 @@
       <input class="form-control" type="date" id="project-expected-completion">
     </div>
     <div class="form-group">
+      <label>עלות הפרויקט (₪)</label>
+      <input class="form-control" type="number" min="0" step="1" id="project-cost" placeholder="עלות כוללת של הפרויקט (רשות)">
+    </div>
+    <div class="form-group">
       <label>הערות על הפרויקט</label>
       <textarea class="form-control" id="project-notes" rows="2" placeholder="הערות כלליות לפרויקט (רשות)" style="resize:vertical;"></textarea>
     </div>
@@ -3758,6 +3762,7 @@ function renderDrawerView() {
       <div class="drawer-row"><span class="drawer-lbl">עדיפות:</span> <strong>${p.priority||3}</strong> — ${priorityLabels[p.priority||3]||''}</div>
       <div class="drawer-row"><span class="drawer-lbl">שלב נוכחי:</span> ${p.stage ? `<span style="background:${getStageColor(p.stage)};color:white;padding:2px 10px;border-radius:20px;font-size:12px;font-weight:700;">${esc(p.stage)}</span>` : '<span style="color:var(--text-muted)">לא הוגדר</span>'}</div>
       <div class="drawer-row"><span class="drawer-lbl">צפי לסיום:</span> ${p.expectedCompletion ? `<strong>${esc(p.expectedCompletion)}</strong>` : '<span style="color:var(--text-muted)">לא הוגדר</span>'}</div>
+      <div class="drawer-row"><span class="drawer-lbl">עלות הפרויקט:</span> ${p.projectCost != null ? `<strong>₪${Number(p.projectCost).toLocaleString()}</strong>` : '<span style="color:var(--text-muted)">לא הוגדרה</span>'}</div>
       <div class="drawer-row"><span class="drawer-lbl">מזהה CRM:</span> ${p.crmId ? `<strong dir="ltr">${esc(p.crmId)}</strong>` : '<span style="color:var(--text-muted)">לא הוגדר</span>'}</div>
       <div class="drawer-row"><span class="drawer-lbl">נוצר:</span> ${p.createdAt ? new Date(p.createdAt).toLocaleDateString('he-IL') : '—'}</div>
     </div>
@@ -3906,6 +3911,10 @@ function startDrawerEdit() {
       <label>צפי לסיום</label>
       <input class="form-control" type="date" id="drawer-expected" value="${p.expectedCompletion||''}">
     </div>
+    <div class="form-group">
+      <label>עלות הפרויקט (₪)</label>
+      <input class="form-control" type="number" min="0" step="1" id="drawer-cost" value="${p.projectCost != null ? p.projectCost : ''}" placeholder="עלות כוללת של הפרויקט (רשות)">
+    </div>
   `;
 
   document.getElementById('drawer-footer').innerHTML = `
@@ -3931,10 +3940,13 @@ async function saveDrawerProject() {
   const priority    = parseInt(document.getElementById('drawer-priority').value) || 3;
   const stage       = document.getElementById('drawer-stage').value || null;
   const expectedCompletion = document.getElementById('drawer-expected').value || null;
+  const projectCostRaw = document.getElementById('drawer-cost').value;
+  const projectCost = projectCostRaw !== '' ? Number(projectCostRaw) : null;
+  if (projectCost != null && (!isFinite(projectCost) || projectCost < 0)) { showToast('עלות הפרויקט לא תקינה', 'error'); return; }
   const crmId       = document.getElementById('drawer-crm-id').value.trim() || null;
   const isActive    = projectStatus !== 'closed';
 
-  const data = { name, description: description||null, region, population, sector, location, notes: notes||null, priority, stage, expectedCompletion, projectStatus, isActive, crmId };
+  const data = { name, description: description||null, region, population, sector, location, notes: notes||null, priority, stage, expectedCompletion, projectCost, projectStatus, isActive, crmId };
   // crmIdSource מבדיל עדכון מכאן מעדכון שהגיע מהאתר המחובר, כדי שה-webhook לא יחזיר לו את השינוי שלו
   if (crmId !== (allProjects[id].crmId || null)) data.crmIdSource = 'internal';
 
@@ -4092,6 +4104,7 @@ function openProjectModal(id) {
   const pStatus = p ? getProjectStatus(p) : 'active';
   document.getElementById('project-status').value = pStatus;
   document.getElementById('project-expected-completion').value = p ? (p.expectedCompletion || '') : '';
+  document.getElementById('project-cost').value = p && p.projectCost != null ? p.projectCost : '';
   const stageEl = document.getElementById('project-stage');
   stageEl.innerHTML = '<option value="">— בחר שלב —</option>' +
     appSettings.projectStages.map(s => `<option value="${esc(s)}"${p && p.stage === s ? ' selected' : ''}>${esc(s)}</option>`).join('');
@@ -4111,12 +4124,15 @@ async function saveProject() {
   const priority = parseInt(document.getElementById('project-priority').value) || 3;
   const stage = document.getElementById('project-stage').value || null;
   const expectedCompletion = document.getElementById('project-expected-completion').value || null;
+  const projectCostRaw = document.getElementById('project-cost').value;
+  const projectCost = projectCostRaw !== '' ? Number(projectCostRaw) : null;
+  if (projectCost != null && (!isFinite(projectCost) || projectCost < 0)) { showToast('עלות הפרויקט לא תקינה', 'error'); return; }
   const projectStatus = document.getElementById('project-status').value || 'active';
   const crmId = document.getElementById('project-crm-id').value.trim() || null;
   const isActive = projectStatus !== 'closed';
   if (!name) { showToast('נא להזין שם פרויקט', 'error'); return; }
 
-  const projectData = { name, description: description || null, region, population, sector, location, notes: notes || null, priority, stage, expectedCompletion, projectStatus, isActive, crmId };
+  const projectData = { name, description: description || null, region, population, sector, location, notes: notes || null, priority, stage, expectedCompletion, projectCost, projectStatus, isActive, crmId };
   const prevCrmId = editingProjectId ? (allProjects[editingProjectId].crmId || null) : null;
   if (crmId !== prevCrmId) projectData.crmIdSource = 'internal';
 
@@ -4817,16 +4833,20 @@ function addSource() {
   if (!val) return;
   appSettings.donationSources.push(val);
   renderAdminSettingsPage();
+  saveSources(); // שמירה מיידית — אחרת המקור נעלם ברענון
 }
 
 function removeSource(idx) {
+  if (!confirm(`למחוק את המקור "${appSettings.donationSources[idx]}"?`)) return;
   appSettings.donationSources.splice(idx, 1);
   renderAdminSettingsPage();
+  saveSources();
 }
 
 async function saveSources() {
   const sources = [];
-  document.querySelectorAll('[id^="source-"]').forEach(el => { if (el.value.trim()) sources.push(el.value.trim()); });
+  // רק שדות הקלט של הרשימה (הסלקטור הקודם [id^="source-"] תפס גם את div#source-emails-list וקרס)
+  document.querySelectorAll('#sources-list input').forEach(el => { if (el.value.trim()) sources.push(el.value.trim()); });
   appSettings.donationSources = sources;
   if (IS_CONFIGURED) await db.ref('settings/donationSources').set(sources);
   showToast('מקורות התרומה נשמרו', 'success');

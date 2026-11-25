@@ -58,6 +58,7 @@ X-Webhook-Signature: sha256=<hex>
     "priority": 3,
     "stage": "בנייה",
     "expectedCompletion": "2027-03-01",
+    "projectCost": 850000,
     "createdAt": 1760000000000,
     "typePrices": { "<typeId>": 5000 },
     "crmId": "CRM-1234",
@@ -73,6 +74,8 @@ X-Webhook-Signature: sha256=<hex>
 `previousStatus` מופיע רק ב-`project.status_changed`, `previousStage` רק ב-`project.stage_changed`, `previousCrmId` רק ב-`project.crm_id_changed` (`null` אם לא היה מזהה קודם), ו-`previousHiddenFromSite` רק ב-`project.visibility_changed`.
 
 `hiddenFromSite` בפרויקט נשלח תמיד (`true` / `false`). כש-`true`, הפרויקט כולו וכל ההנצחות שלו קיימים במערכת אבל לא מוצגים באתר. זו לא מחיקה. כשהפרויקט מוצג שוב יגיע `project.visibility_changed` עם `hiddenFromSite: false`. בזמן ההסתרה ובחזרה ממנה לא נשלחים אירועים נפרדים לכל הנצחה. ההנצחות שומרות על ה-`hiddenFromSite` הפרטי שלהן, ומה שקובע אם הנצחה מוצגת: `!project.hiddenFromSite && !commemoration.hiddenFromSite`.
+
+`projectCost` — עלות הפרויקט הכוללת בש"ח (מספר). אם לא הוגדרה, השדה לא נשלח. שינוי שלה נשלח ב-`project.updated` עם `"projectCost"` ב-`changedFields`.
 
 ב-`project.updated` מגיע גם `changedFields` — רשימת השדות שהשתנו (למשל `["name", "typePrices"]`). שינוי שלב או מזהה CRM לא נכלל בו, כי הם נשלחים באירועים משלהם. אם הפרויקט השתנה שם, יש לעדכן גם את `projectName` בהנצחות שלו באתר.
 
